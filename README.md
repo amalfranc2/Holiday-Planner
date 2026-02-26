@@ -1,0 +1,2 @@
+# Holiday-Planner
+A comprehensive multi-branch holiday management system for kitchen, counter, and driver staff with Head Office approval workflows.
