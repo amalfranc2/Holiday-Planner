@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<'Calendar' | 'Settings' | 'Reports'>('Calendar');
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false); // Safety lock
   const [dbError, setDbError] = useState<string | null>(null);
   
   // Data State
@@ -61,6 +62,7 @@ const App: React.FC = () => {
         // If all core fetches returned null, the DB is likely not connected
         if (resBranches === null && resStaff === null && resRequests === null) {
           setDbError("Could not connect to the database. Please check your POSTGRES_URL in the .env file.");
+          return; // Stop here if we can't connect
         }
 
         if (Array.isArray(resBranches) && resBranches.length > 0) setBranches(resBranches);
@@ -79,6 +81,9 @@ const App: React.FC = () => {
             setCurrentBranchId(sessionUser.branchId);
           }
         }
+        
+        // Success! Unlock syncing
+        setDataLoaded(true);
       } catch (error: any) {
         console.error("Failed to fetch data from API", error);
         setDbError(error.message || "An unexpected error occurred while connecting to the database.");
@@ -91,6 +96,7 @@ const App: React.FC = () => {
   }, []);
 
   const syncData = async (endpoint: string, data: any) => {
+    if (!dataLoaded) return; // Safety lock: don't sync if we haven't loaded yet
     try {
       await fetch(endpoint, {
         method: 'POST',
