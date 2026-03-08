@@ -149,32 +149,36 @@ const MainView: React.FC<MainViewProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button onClick={() => navigateMonth(-1)} className="p-2 hover:bg-white rounded-md transition-all">
-              <i className="fa-solid fa-chevron-left text-gray-600"></i>
-            </button>
-            <h2 className="px-4 font-bold text-gray-800 min-w-[150px] text-center">
-              {monthsToDisplay === 1 ? `${getMonthName(currentDate)} ${getYear(currentDate)}` : 'Quarterly View'}
-            </h2>
-            <button onClick={() => navigateMonth(1)} className="p-2 hover:bg-white rounded-md transition-all">
-              <i className="fa-solid fa-chevron-right text-gray-600"></i>
-            </button>
-          </div>
+          {viewType !== 'Dashboard' && (
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <button onClick={() => navigateMonth(-1)} className="p-2 hover:bg-white rounded-md transition-all">
+                <i className="fa-solid fa-chevron-left text-gray-600"></i>
+              </button>
+              <h2 className="px-4 font-bold text-gray-800 min-w-[150px] text-center">
+                {monthsToDisplay === 1 ? `${getMonthName(currentDate)} ${getYear(currentDate)}` : 'Quarterly View'}
+              </h2>
+              <button onClick={() => navigateMonth(1)} className="p-2 hover:bg-white rounded-md transition-all">
+                <i className="fa-solid fa-chevron-right text-gray-600"></i>
+              </button>
+            </div>
+          )}
 
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button 
-              onClick={() => setMonthsToDisplay(1)}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${monthsToDisplay === 1 ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
-            >
-              1 Month
-            </button>
-            <button 
-              onClick={() => setMonthsToDisplay(3)}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${monthsToDisplay === 3 ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
-            >
-              3 Months
-            </button>
-          </div>
+          {viewType !== 'Dashboard' && (
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button 
+                onClick={() => setMonthsToDisplay(1)}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${monthsToDisplay === 1 ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+              >
+                1 Month
+              </button>
+              <button 
+                onClick={() => setMonthsToDisplay(3)}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${monthsToDisplay === 3 ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+              >
+                3 Months
+              </button>
+            </div>
+          )}
           <div className="flex bg-gray-100 rounded-lg p-1">
             <button 
               onClick={() => setViewType('Dashboard')}
@@ -197,34 +201,38 @@ const MainView: React.FC<MainViewProps> = ({
               </button>
             )}
           </div>
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => toggleCategory(cat)}
-                className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                  selectedCategories.includes(cat) 
-                    ? 'bg-white shadow-sm text-indigo-600' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
+          {viewType !== 'Dashboard' && (
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => toggleCategory(cat)}
+                  className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                    selectedCategories.includes(cat) 
+                      ? 'bg-white shadow-sm text-indigo-600' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="flex gap-4 text-xs font-semibold">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-200 border border-red-300"></span>
-              <span className="text-gray-600">Pending</span>
+          {viewType !== 'Dashboard' && (
+            <div className="flex gap-4 text-xs font-semibold">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-red-200 border border-red-300"></span>
+                <span className="text-gray-600">Pending</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-500"></span>
+                <span className="text-gray-600">Approved</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-500"></span>
-              <span className="text-gray-600">Approved</span>
-            </div>
-          </div>
+          )}
           <button 
             onClick={() => { setSelectedRequest(undefined); setIsModalOpen(true); }}
             className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95"
@@ -410,56 +418,83 @@ const MainView: React.FC<MainViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="p-4 text-xs font-bold text-gray-500 uppercase border-b border-gray-100 sticky left-0 bg-gray-50 z-10">Category</th>
-                  {Array.from({ length: daysInMonth(currentDate.getMonth(), currentDate.getFullYear()) }).map((_, i) => (
-                    <th key={i} className="p-2 text-center text-[10px] font-bold text-gray-400 border-b border-gray-100 min-w-[40px]">
-                      {i + 1}
-                    </th>
-                  ))}
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase border-b border-gray-100 sticky left-0 bg-gray-50 z-20">Category</th>
+                  {Array.from({ length: monthsToDisplay }).map((_, mIdx) => {
+                    const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + mIdx, 1);
+                    const days = daysInMonth(monthDate.getMonth(), monthDate.getFullYear());
+                    return (
+                      <th 
+                        key={mIdx} 
+                        colSpan={days} 
+                        className="p-2 text-center text-[10px] font-bold text-gray-600 border-b border-gray-100 border-r bg-gray-100/50 uppercase tracking-wider"
+                      >
+                        {getMonthName(monthDate)} {getYear(monthDate)}
+                      </th>
+                    );
+                  })}
+                </tr>
+                <tr className="bg-white">
+                  <th className="p-4 border-b border-gray-100 sticky left-0 bg-white z-20"></th>
+                  {Array.from({ length: monthsToDisplay }).map((_, mIdx) => {
+                    const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + mIdx, 1);
+                    const days = daysInMonth(monthDate.getMonth(), monthDate.getFullYear());
+                    return Array.from({ length: days }).map((_, dIdx) => (
+                      <th key={`${mIdx}-${dIdx}`} className="p-2 text-center text-[10px] font-bold text-gray-400 border-b border-gray-100 min-w-[35px] border-r">
+                        {dIdx + 1}
+                      </th>
+                    ));
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {CATEGORIES.map(cat => (
                   <tr key={cat} className="hover:bg-gray-50 transition-colors">
                     <td className="p-4 text-sm font-bold text-gray-700 border-b border-gray-100 sticky left-0 bg-white z-10 shadow-sm">{cat}</td>
-                    {Array.from({ length: daysInMonth(currentDate.getMonth(), currentDate.getFullYear()) }).map((_, dayIdx) => {
-                      const day = dayIdx + 1;
-                      const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-                      const dateReqs = getRequestsForDate(date);
-                      const count = dateReqs.filter(r => {
-                        const s = staff.find(st => st.id === r.staffId);
-                        return s?.category === cat;
-                      }).length;
+                    {Array.from({ length: monthsToDisplay }).map((_, mIdx) => {
+                      const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + mIdx, 1);
+                      const days = daysInMonth(monthDate.getMonth(), monthDate.getFullYear());
                       
-                      // Calculate heat intensity
-                      let bgColor = 'bg-white';
-                      let textColor = 'text-gray-400';
-                      if (count > 0) {
-                        bgColor = 'bg-red-50';
-                        textColor = 'text-red-600';
-                      }
-                      if (count > 1) {
-                        bgColor = 'bg-red-100';
-                        textColor = 'text-red-700';
-                      }
-                      if (count > 2) {
-                        bgColor = 'bg-red-200';
-                        textColor = 'text-red-800';
-                      }
-                      if (count > 3) {
-                        bgColor = 'bg-red-400 animate-pulse';
-                        textColor = 'text-white';
-                      }
+                      return Array.from({ length: days }).map((_, dayIdx) => {
+                        const day = dayIdx + 1;
+                        const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
+                        const dateReqs = getRequestsForDate(date);
+                        const count = dateReqs.filter(r => {
+                          const s = staff.find(st => st.id === r.staffId);
+                          return s?.category === cat;
+                        }).length;
+                        
+                        // Calculate heat intensity
+                        let bgColor = 'bg-white';
+                        let textColor = 'text-gray-400';
+                        if (count > 0) {
+                          bgColor = 'bg-red-50';
+                          textColor = 'text-red-600';
+                        }
+                        if (count > 1) {
+                          bgColor = 'bg-red-100';
+                          textColor = 'text-red-700';
+                        }
+                        if (count > 2) {
+                          bgColor = 'bg-red-200';
+                          textColor = 'text-red-800';
+                        }
+                        if (count > 3) {
+                          bgColor = 'bg-red-400 animate-pulse';
+                          textColor = 'text-white';
+                        }
 
-                      return (
-                        <td 
-                          key={day} 
-                          onClick={() => setActiveDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))}
-                          className={`p-2 text-center text-xs font-bold border-b border-gray-100 border-r cursor-pointer transition-colors ${bgColor} ${textColor} ${activeDate?.getDate() === day ? 'ring-2 ring-indigo-500 ring-inset' : ''}`}
-                        >
-                          {count > 0 ? count : '-'}
-                        </td>
-                      );
+                        const isToday = date.toDateString() === new Date().toDateString();
+
+                        return (
+                          <td 
+                            key={`${mIdx}-${day}`} 
+                            onClick={() => setActiveDate(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))}
+                            className={`p-2 text-center text-xs font-bold border-b border-gray-100 border-r cursor-pointer transition-colors ${bgColor} ${textColor} ${activeDate?.toDateString() === date.toDateString() ? 'ring-2 ring-indigo-500 ring-inset' : ''} ${isToday ? 'bg-indigo-50/30' : ''}`}
+                          >
+                            {count > 0 ? count : '-'}
+                          </td>
+                        );
+                      });
                     })}
                   </tr>
                 ))}
