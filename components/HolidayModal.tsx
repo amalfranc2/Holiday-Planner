@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Staff, HolidayRequest, StaffCategory, UserRole, SystemConfig } from '../types';
+import { Staff, HolidayRequest, StaffCategory, UserRole, SystemConfig, User, Branch } from '../types';
 import { CATEGORIES } from '../constants';
 
 interface HolidayModalProps {
@@ -9,23 +9,25 @@ interface HolidayModalProps {
   staff: Staff[];
   requests: HolidayRequest[];
   systemConfig: SystemConfig;
+  branches: Branch[];
   selectedBranchId: string;
-  userBranchId?: string;
+  currentUser: User;
   role: UserRole;
   onSave: (request: Partial<HolidayRequest>) => void;
+  onDelete: (id: string) => void;
   editingRequest?: HolidayRequest;
   initialDate?: Date;
 }
 
 const HolidayModal: React.FC<HolidayModalProps> = ({ 
-  isOpen, onClose, staff, requests, systemConfig, selectedBranchId, userBranchId, role, onSave, editingRequest, initialDate 
+  isOpen, onClose, staff, requests, systemConfig, branches, selectedBranchId, currentUser, role, onSave, onDelete, editingRequest, initialDate 
 }) => {
   const [formData, setFormData] = useState({
     staffId: '',
     startDate: '',
     endDate: '',
     notes: '',
-    status: 'Pending' as 'Pending' | 'Approved',
+    status: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn',
     duration: 1
   });
 
@@ -79,7 +81,14 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
   };
 
   const usedDays = formData.staffId ? calculateUsedDays(formData.staffId) : 0;
+  const calculatePendingDays = (staffId: string) => {
+    return requests
+      .filter(r => r.staffId === staffId && r.status === 'Pending' && r.id !== editingRequest?.id)
+      .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
+  };
+  const pendingDays = formData.staffId ? calculatePendingDays(formData.staffId) : 0;
   const remainingDays = selectedStaff ? selectedStaff.totalAllowance - usedDays : 0;
+  const staffBranch = selectedStaff ? branches.find(b => b.id === selectedStaff.branchId) : null;
 
   const checkRotation = (staffId: string) => {
     const lastYear = new Date().getFullYear() - 1;
@@ -132,7 +141,17 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
   };
 
   const isHO = role === 'HeadOffice';
-  const isReadOnly = !isHO && editingRequest && editingRequest.branchId !== userBranchId;
+  const isOwnBranch = editingRequest ? (editingRequest.branchId === currentUser.branchId) : (selectedBranchId === currentUser.branchId);
+  const isReadOnly = !isHO && editingRequest && !isOwnBranch;
+
+  const handleWithdraw = () => {
+    if (!editingRequest) return;
+    onSave({
+      ...editingRequest,
+      status: 'Withdrawn'
+    });
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -162,12 +181,20 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
               ))}
             </select>
             {selectedStaff && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < formData.duration ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                  Allowance: {usedDays}/{selectedStaff.totalAllowance} used ({remainingDays} left)
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < formData.duration ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                    Allowance: {usedDays}/{selectedStaff.totalAllowance} used ({remainingDays} left)
+                  </div>
+                  <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                    Pending: {pendingDays} Days
+                  </div>
+                  <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                    Branch: {staffBranch?.name || 'Unknown'}
+                  </div>
                 </div>
                 {hadPrimeTimeLastYear && (
-                  <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                  <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700 inline-block">
                     <i className="fa-solid fa-clock-rotate-left mr-1"></i> Had Prime Time Holiday Last Year
                   </div>
                 )}
@@ -220,7 +247,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
@@ -229,7 +256,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                   onChange={() => setFormData(prev => ({ ...prev, status: 'Pending' }))}
                   className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span className="text-sm font-medium text-gray-700">Pending (Pale Red)</span>
+                <span className="text-sm font-medium text-gray-700">Pending</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -239,8 +266,29 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                   onChange={() => setFormData(prev => ({ ...prev, status: 'Approved' }))}
                   className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
                 />
-                <span className="text-sm font-medium text-gray-700">Approved (Green)</span>
+                <span className="text-sm font-medium text-gray-700">Approved</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  disabled={!isHO}
+                  checked={formData.status === 'Rejected'}
+                  onChange={() => setFormData(prev => ({ ...prev, status: 'Rejected' }))}
+                  className="w-4 h-4 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Rejected</span>
+              </label>
+              {formData.status === 'Withdrawn' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    disabled
+                    checked
+                    className="w-4 h-4 text-gray-400"
+                  />
+                  <span className="text-sm font-medium text-gray-400 italic">Withdrawn</span>
+                </label>
+              )}
             </div>
           </div>
 
@@ -285,20 +333,43 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
             </div>
           )}
 
-          <div className="pt-4 flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            {!isReadOnly && (
+          <div className="pt-4 flex flex-col gap-3">
+            <div className="flex gap-3">
               <button
-                type="submit"
-                className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md"
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
               >
-                {editingRequest ? 'Update' : 'Save'}
+                Cancel
+              </button>
+              {!isReadOnly && (
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md"
+                >
+                  {editingRequest ? 'Update' : 'Save'}
+                </button>
+              )}
+            </div>
+            
+            {editingRequest && !isReadOnly && formData.status !== 'Withdrawn' && (
+              <button
+                type="button"
+                onClick={handleWithdraw}
+                className="w-full px-4 py-2.5 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 hover:text-gray-800 transition-all flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-rotate-left"></i>
+                Withdraw Request
+              </button>
+            )}
+
+            {isHO && editingRequest && (
+              <button
+                type="button"
+                onClick={() => { onDelete(editingRequest.id); onClose(); }}
+                className="w-full px-4 py-2.5 text-red-600 font-semibold hover:bg-red-50 rounded-lg transition-all"
+              >
+                Delete Permanently
               </button>
             )}
           </div>

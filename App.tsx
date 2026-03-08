@@ -222,6 +222,7 @@ const App: React.FC = () => {
       {currentView === 'Calendar' ? (
         <MainView 
           role={currentUser.role}
+          currentUser={currentUser}
           currentBranchId={currentBranchId}
           requests={requests}
           branches={branches}
@@ -236,6 +237,7 @@ const App: React.FC = () => {
           branches={branches}
           staff={staff}
           requests={requests}
+          currentUser={currentUser}
         />
       ) : (
         <SettingsView 
