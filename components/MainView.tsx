@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { HolidayRequest, Staff, Branch, UserRole, StaffCategory, SystemConfig } from '../types';
+import { HolidayRequest, Staff, Branch, UserRole, StaffCategory, SystemConfig, User } from '../types';
 import { BRANCHES, MOCK_STAFF, CATEGORIES } from '../constants';
 import HolidayModal from './HolidayModal';
 
 interface MainViewProps {
   role: UserRole;
+  currentUser: User;
   currentBranchId?: string;
   requests: HolidayRequest[];
   branches: Branch[];
@@ -17,7 +18,7 @@ interface MainViewProps {
 }
 
 const MainView: React.FC<MainViewProps> = ({ 
-  role, currentBranchId, requests, branches, staff, systemConfig, onAddRequest, onUpdateRequest, onDeleteRequest 
+  role, currentUser, currentBranchId, requests, branches, staff, systemConfig, onAddRequest, onUpdateRequest, onDeleteRequest 
 }) => {
   const [viewType, setViewType] = useState<'Dashboard' | 'Standard' | 'CrossBranch'>('Dashboard');
   const [monthsToDisplay, setMonthsToDisplay] = useState<1 | 3>(1);
@@ -26,6 +27,7 @@ const MainView: React.FC<MainViewProps> = ({
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | undefined>(undefined);
   const [activeDate, setActiveDate] = useState<Date | undefined>(undefined);
   const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Driver']);
+  const [dashboardFilter, setDashboardFilter] = useState<'year' | 'upcoming'>('year');
 
   const daysInMonth = (month: number, year: number) => new Date(year, month + 1, 0).getDate();
   
@@ -112,7 +114,8 @@ const MainView: React.FC<MainViewProps> = ({
                 <div className="space-y-1">
                   {dateRequests.map(r => {
                     const sMember = staff.find(s => s.id === r.staffId);
-                    const isOwnBranch = r.branchId === currentBranchId;
+                    const isOwnBranch = r.branchId === currentUser.branchId;
+                    const canEdit = isHO || isOwnBranch;
                     const branch = branches.find(b => b.id === r.branchId);
                     return (
                       <div 
@@ -121,11 +124,15 @@ const MainView: React.FC<MainViewProps> = ({
                         className={`text-[9px] p-1 rounded border transition-all truncate group relative ${
                           r.status === 'Approved' 
                             ? 'bg-emerald-100 border-emerald-200 text-emerald-800' 
-                            : 'bg-red-50 border-red-100 text-red-700 opacity-80'
-                        } ${isHO || isOwnBranch ? 'hover:scale-105 hover:shadow-sm' : 'opacity-40 cursor-not-allowed'}`}
+                            : r.status === 'Rejected'
+                            ? 'bg-red-100 border-red-200 text-red-800'
+                            : r.status === 'Withdrawn'
+                            ? 'bg-gray-100 border-gray-200 text-gray-500 line-through'
+                            : 'bg-amber-100 border-amber-200 text-amber-800 opacity-80'
+                        } ${canEdit ? 'hover:scale-105 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
                       >
                         <span className="font-bold">[{sMember?.category[0]}]</span> {sMember?.name}
-                        {!isOwnBranch && <div className="text-[7px] opacity-70">{branch?.name}</div>}
+                        {currentBranchId === 'all' && <div className="text-[7px] opacity-70">{branch?.name}</div>}
                       </div>
                     );
                   })}
@@ -229,20 +236,57 @@ const MainView: React.FC<MainViewProps> = ({
 
       {viewType === 'Dashboard' ? (
         <div className="space-y-6">
+          <div className="flex justify-end">
+            <div className="flex bg-gray-100 p-1 rounded-xl">
+              <button
+                onClick={() => setDashboardFilter('year')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                  dashboardFilter === 'year' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Current Year
+              </button>
+              <button
+                onClick={() => setDashboardFilter('upcoming')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
+                  dashboardFilter === 'upcoming' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                Next 3 Months
+              </button>
+            </div>
+          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <i className="fa-solid fa-clock text-amber-500"></i>
-                Pending Requests (Current Year)
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <i className="fa-solid fa-clock text-amber-500"></i>
+                  Pending Requests
+                </h3>
+              </div>
               <div className="space-y-3">
                 {requests
                   .filter(r => r.status === 'Pending' && (currentBranchId === 'all' || r.branchId === currentBranchId))
-                  .filter(r => new Date(r.startDate).getFullYear() === new Date().getFullYear())
+                  .filter(r => {
+                    const startDate = new Date(r.startDate);
+                    const now = new Date();
+                    if (dashboardFilter === 'year') {
+                      return startDate.getFullYear() === now.getFullYear();
+                    } else {
+                      const threeMonthsFromNow = new Date();
+                      threeMonthsFromNow.setMonth(now.getMonth() + 3);
+                      return startDate >= now && startDate <= threeMonthsFromNow;
+                    }
+                  })
                   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                   .map(r => {
                     const sMember = staff.find(s => s.id === r.staffId);
                     const branch = branches.find(b => b.id === r.branchId);
+                    const start = new Date(r.startDate);
+                    const end = new Date(r.endDate);
+                    const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                    
                     return (
                       <div 
                         key={r.id} 
@@ -250,15 +294,34 @@ const MainView: React.FC<MainViewProps> = ({
                         className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-indigo-200 cursor-pointer transition-all flex justify-between items-center group"
                       >
                         <div>
-                          <div className="font-bold text-gray-800">{sMember?.name}</div>
+                          <div className="font-bold text-gray-800 flex items-center gap-2">
+                            {sMember?.name}
+                            <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">
+                              {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
+                            </span>
+                          </div>
                           <div className="text-xs text-gray-500">{r.startDate} to {r.endDate} • {branch?.name}</div>
                         </div>
                         <i className="fa-solid fa-chevron-right text-gray-300 group-hover:text-indigo-500 transition-colors"></i>
                       </div>
                     );
                   })}
-                {requests.filter(r => r.status === 'Pending' && (currentBranchId === 'all' || r.branchId === currentBranchId)).length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm italic">No pending requests</div>
+                {requests
+                  .filter(r => r.status === 'Pending' && (currentBranchId === 'all' || r.branchId === currentBranchId))
+                  .filter(r => {
+                    const startDate = new Date(r.startDate);
+                    const now = new Date();
+                    if (dashboardFilter === 'year') {
+                      return startDate.getFullYear() === now.getFullYear();
+                    } else {
+                      const threeMonthsFromNow = new Date();
+                      threeMonthsFromNow.setMonth(now.getMonth() + 3);
+                      return startDate >= now && startDate <= threeMonthsFromNow;
+                    }
+                  }).length === 0 && (
+                  <div className="text-center py-8 text-gray-400 text-sm italic">
+                    No pending requests {dashboardFilter === 'upcoming' ? 'in the next 3 months' : 'this year'}
+                  </div>
                 )}
               </div>
             </div>
@@ -266,16 +329,30 @@ const MainView: React.FC<MainViewProps> = ({
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <i className="fa-solid fa-circle-check text-emerald-500"></i>
-                Approved Requests (Current Year)
+                Approved Requests
               </h3>
               <div className="space-y-3">
                 {requests
                   .filter(r => r.status === 'Approved' && (currentBranchId === 'all' || r.branchId === currentBranchId))
-                  .filter(r => new Date(r.startDate).getFullYear() === new Date().getFullYear())
+                  .filter(r => {
+                    const startDate = new Date(r.startDate);
+                    const now = new Date();
+                    if (dashboardFilter === 'year') {
+                      return startDate.getFullYear() === now.getFullYear();
+                    } else {
+                      const threeMonthsFromNow = new Date();
+                      threeMonthsFromNow.setMonth(now.getMonth() + 3);
+                      return startDate >= now && startDate <= threeMonthsFromNow;
+                    }
+                  })
                   .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
                   .map(r => {
                     const sMember = staff.find(s => s.id === r.staffId);
                     const branch = branches.find(b => b.id === r.branchId);
+                    const start = new Date(r.startDate);
+                    const end = new Date(r.endDate);
+                    const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
                     return (
                       <div 
                         key={r.id} 
@@ -283,15 +360,34 @@ const MainView: React.FC<MainViewProps> = ({
                         className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-indigo-200 cursor-pointer transition-all flex justify-between items-center group"
                       >
                         <div>
-                          <div className="font-bold text-gray-800">{sMember?.name}</div>
+                          <div className="font-bold text-gray-800 flex items-center gap-2">
+                            {sMember?.name}
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                              {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
+                            </span>
+                          </div>
                           <div className="text-xs text-gray-500">{r.startDate} to {r.endDate} • {branch?.name}</div>
                         </div>
                         <i className="fa-solid fa-chevron-right text-gray-300 group-hover:text-indigo-500 transition-colors"></i>
                       </div>
                     );
                   })}
-                {requests.filter(r => r.status === 'Approved' && (currentBranchId === 'all' || r.branchId === currentBranchId)).length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm italic">No approved requests</div>
+                {requests
+                  .filter(r => r.status === 'Approved' && (currentBranchId === 'all' || r.branchId === currentBranchId))
+                  .filter(r => {
+                    const startDate = new Date(r.startDate);
+                    const now = new Date();
+                    if (dashboardFilter === 'year') {
+                      return startDate.getFullYear() === now.getFullYear();
+                    } else {
+                      const threeMonthsFromNow = new Date();
+                      threeMonthsFromNow.setMonth(now.getMonth() + 3);
+                      return startDate >= now && startDate <= threeMonthsFromNow;
+                    }
+                  }).length === 0 && (
+                  <div className="text-center py-8 text-gray-400 text-sm italic">
+                    No approved requests {dashboardFilter === 'upcoming' ? 'in the next 3 months' : 'this year'}
+                  </div>
                 )}
               </div>
             </div>
@@ -379,10 +475,12 @@ const MainView: React.FC<MainViewProps> = ({
         staff={staff}
         requests={requests}
         systemConfig={systemConfig}
-        selectedBranchId={selectedRequest ? selectedRequest.branchId : displayBranchId}
-        userBranchId={currentBranchId}
+        branches={branches}
+        selectedBranchId={selectedRequest ? selectedRequest.branchId : (currentBranchId === 'all' ? (currentUser.branchId || branches[0]?.id) : currentBranchId)}
+        currentUser={currentUser}
         role={role}
         onSave={selectedRequest ? onUpdateRequest : onAddRequest}
+        onDelete={onDeleteRequest}
         editingRequest={selectedRequest}
         initialDate={activeDate}
       />

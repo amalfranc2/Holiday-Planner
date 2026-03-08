@@ -21,7 +21,7 @@ export interface HolidayRequest {
   branchId: string;
   startDate: string; // ISO string
   endDate: string; // ISO string
-  status: 'Pending' | 'Approved';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn';
   notes?: string;
   createdAt: string; // Timestamp for priority logic
 }

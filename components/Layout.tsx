@@ -60,12 +60,7 @@ const Layout: React.FC<LayoutProps> = ({
                 <i className="fa-solid fa-right-from-bracket"></i>
               </button>
             </div>
-            {role === 'Manager' && (
-              <div className="text-xs font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg">
-                {branches.find(b => b.id === currentBranchId)?.name}
-              </div>
-            )}
-            {role === 'HeadOffice' && (
+            {(role === 'HeadOffice' || role === 'Manager') && (
               <select value={currentBranchId} onChange={(e) => onBranchChange(e.target.value)} className="bg-gray-100 border-none rounded-md text-xs font-bold px-3 py-1.5">
                 <option value="all">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -112,7 +107,7 @@ const Layout: React.FC<LayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-4">
-            {role === 'HeadOffice' && (
+            {(role === 'HeadOffice' || role === 'Manager') && (
               <select 
                 value={currentBranchId}
                 onChange={(e) => onBranchChange(e.target.value)}
@@ -123,12 +118,6 @@ const Layout: React.FC<LayoutProps> = ({
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
-            )}
-            
-            {role === 'Manager' && (
-              <div className="bg-indigo-800 px-4 py-1.5 rounded-md text-sm font-bold border border-indigo-600/50">
-                {branches.find(b => b.id === currentBranchId)?.name}
-              </div>
             )}
 
             <div className="flex items-center gap-3 pl-4 border-l border-indigo-600/50">
