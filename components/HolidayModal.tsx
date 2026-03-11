@@ -80,14 +80,19 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
   };
 
-  const usedDays = formData.staffId ? calculateUsedDays(formData.staffId) : 0;
+  const currentRequestDays = calculateDays(formData.startDate, formData.endDate);
+  const usedDaysExcludingCurrent = formData.staffId ? calculateUsedDays(formData.staffId) : 0;
+  
+  // If the current request is approved, it should be counted in "used"
+  const totalUsedIfApproved = usedDaysExcludingCurrent + (formData.status === 'Approved' ? currentRequestDays : 0);
+  const remainingDays = selectedStaff ? selectedStaff.totalAllowance - totalUsedIfApproved : 0;
+  
   const calculatePendingDays = (staffId: string) => {
     return requests
       .filter(r => r.staffId === staffId && r.status === 'Pending' && r.id !== editingRequest?.id)
       .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
   };
   const pendingDays = formData.staffId ? calculatePendingDays(formData.staffId) : 0;
-  const remainingDays = selectedStaff ? selectedStaff.totalAllowance - usedDays : 0;
   const staffBranch = selectedStaff ? branches.find(b => b.id === selectedStaff.branchId) : null;
 
   const checkRotation = (staffId: string) => {
@@ -183,8 +188,8 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
             {selectedStaff && (
               <div className="mt-2 space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < formData.duration ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                    Allowance: {usedDays}/{selectedStaff.totalAllowance} used ({remainingDays} left)
+                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < 0 ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                    Allowance: {totalUsedIfApproved}/{selectedStaff.totalAllowance} used ({remainingDays} left)
                   </div>
                   <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
                     Pending: {pendingDays} Days

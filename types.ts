@@ -1,5 +1,5 @@
 
-export type StaffCategory = 'Kitchen' | 'Counter' | 'Driver';
+export type StaffCategory = 'Kitchen' | 'Counter' | 'Manager';
 
 export interface Branch {
   id: string;
@@ -13,6 +13,7 @@ export interface Staff {
   category: StaffCategory;
   branchId: string;
   totalAllowance: number; // Annual holiday allowance in days
+  email?: string;
 }
 
 export interface HolidayRequest {
@@ -40,6 +41,8 @@ export interface User {
   role: UserRole;
   branchId?: string; // For Managers
   name: string;
+  email?: string;
+  receiveNotifications?: boolean;
 }
 
 export interface UserContextType {

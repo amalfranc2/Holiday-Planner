@@ -16,7 +16,8 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
 
   const [reportType, setReportType] = useState<'branch' | 'staff'>('branch');
   const [selectedBranchId, setSelectedBranchId] = useState<string>(isManager ? (managerBranchId || 'all') : 'all');
-  const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Driver']);
+  const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Manager']);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
   // Update selectedBranchId if currentUser changes (though unlikely during a session)
   useEffect(() => {
@@ -81,7 +82,6 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
   }, [branches, filteredRequests, selectedBranchId]);
 
   const staffReports = useMemo(() => {
-    const currentYear = new Date().getFullYear();
     return staff
       .filter(s => {
         const categoryMatch = selectedCategories.includes(s.category);
@@ -93,11 +93,11 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
         const branch = branches.find(b => b.id === s.branchId);
         
         const approvedDays = staffHistory
-          .filter(r => r.status === 'Approved' && new Date(r.startDate).getFullYear() === currentYear)
+          .filter(r => r.status === 'Approved' && parseISO(r.startDate).getFullYear() === selectedYear)
           .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
           
         const pendingDays = staffHistory
-          .filter(r => r.status === 'Pending' && new Date(r.startDate).getFullYear() === currentYear)
+          .filter(r => r.status === 'Pending' && parseISO(r.startDate).getFullYear() === selectedYear)
           .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
 
         const balance = s.totalAllowance - approvedDays;
@@ -112,7 +112,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
         };
       })
       .filter(s => s.history.length > 0);
-  }, [staff, requests, branches, selectedBranchId, selectedCategories]);
+  }, [staff, requests, branches, selectedBranchId, selectedCategories, selectedYear]);
 
   const toggleCategory = (cat: StaffCategory) => {
     setSelectedCategories(prev => 
@@ -163,15 +163,12 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                 <select 
                   value={selectedBranchId}
                   onChange={(e) => setSelectedBranchId(e.target.value)}
-                  disabled={isManager}
-                  className={`px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white ${isManager ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
                 >
-                  {!isManager && <option value="all">All Branches</option>}
-                  {branches
-                    .filter(b => !isManager || b.id === managerBranchId)
-                    .map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
+                  <option value="all">All Branches</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -194,7 +191,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                 </div>
               </div>
 
-              {reportType === 'branch' && (
+              {reportType === 'branch' ? (
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
                     <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">From</label>
@@ -213,6 +210,23 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       onChange={(e) => setEndDate(e.target.value)}
                       className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Year Filter</label>
+                  <div className="flex bg-gray-100 p-1 rounded-xl">
+                    {[2024, 2025, 2026, 2027].map(year => (
+                      <button
+                        key={year}
+                        onClick={() => setSelectedYear(year)}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          selectedYear === year ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        {year}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
@@ -331,7 +345,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                 <p className="text-xl font-bold text-indigo-700">{staffReports.length}</p>
               </div>
               <div>
-                <p className="text-[10px] uppercase font-bold text-emerald-400">Total Approved</p>
+                <p className="text-[10px] uppercase font-bold text-emerald-400">Total Used</p>
                 <p className="text-xl font-bold text-emerald-700">
                   {staffReports.reduce((acc, s) => acc + s.approvedDays, 0)}d
                 </p>
@@ -357,7 +371,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                         <p className="text-xs font-bold text-indigo-700">{s.totalAllowance}d</p>
                       </div>
                       <div className="bg-emerald-50 px-3 py-1 rounded-lg">
-                        <p className="text-[8px] uppercase font-bold text-emerald-400 leading-none mb-1">Approved</p>
+                        <p className="text-[8px] uppercase font-bold text-emerald-400 leading-none mb-1">Used</p>
                         <p className="text-xs font-bold text-emerald-700">{s.approvedDays}d</p>
                       </div>
                       <div className="bg-amber-50 px-3 py-1 rounded-lg">

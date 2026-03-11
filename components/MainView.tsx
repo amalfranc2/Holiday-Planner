@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { HolidayRequest, Staff, Branch, UserRole, StaffCategory, SystemConfig, User } from '../types';
 import { BRANCHES, MOCK_STAFF, CATEGORIES } from '../constants';
 import HolidayModal from './HolidayModal';
@@ -26,7 +26,7 @@ const MainView: React.FC<MainViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | undefined>(undefined);
   const [activeDate, setActiveDate] = useState<Date | undefined>(undefined);
-  const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Driver']);
+  const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Manager']);
   const [dashboardFilter, setDashboardFilter] = useState<'year' | 'upcoming'>('year');
 
   const daysInMonth = (month: number, year: number) => new Date(year, month + 1, 0).getDate();
@@ -72,6 +72,34 @@ const MainView: React.FC<MainViewProps> = ({
     setSelectedRequest(req);
     setIsModalOpen(true);
   };
+
+  const dashboardStats = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const branchStaff = staff.filter(s => currentBranchId === 'all' || s.branchId === currentBranchId);
+    const branchRequests = requests.filter(r => currentBranchId === 'all' || r.branchId === currentBranchId);
+
+    const calculateDays = (start: string, end: string) => {
+      const s = new Date(start);
+      const e = new Date(end);
+      return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    };
+
+    const totalAllowance = branchStaff.reduce((acc, s) => acc + s.totalAllowance, 0);
+    const approvedDays = branchRequests
+      .filter(r => r.status === 'Approved' && new Date(r.startDate).getFullYear() === currentYear)
+      .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
+    
+    const pendingDays = branchRequests
+      .filter(r => r.status === 'Pending' && new Date(r.startDate).getFullYear() === currentYear)
+      .reduce((acc, r) => acc + calculateDays(r.startDate, r.endDate), 0);
+
+    return {
+      total: totalAllowance,
+      used: approvedDays,
+      pending: pendingDays,
+      remaining: totalAllowance - approvedDays
+    };
+  }, [staff, requests, currentBranchId]);
 
   const renderMonth = (baseDate: Date) => {
     const startOfMonth = getStartOfMonth(baseDate);
@@ -243,7 +271,49 @@ const MainView: React.FC<MainViewProps> = ({
       </div>
 
       {viewType === 'Dashboard' ? (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          {/* Dashboard Stats Summary - Visible to Head Office always, and to Managers only for their own branch */}
+          {(currentUser.role === 'HeadOffice' || (currentBranchId !== 'all' && currentBranchId === currentUser.branchId)) && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xl">
+                  <i className="fa-solid fa-calendar-check"></i>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Allowance</p>
+                  <p className="text-xl font-black text-gray-800">{dashboardStats.total}<span className="text-xs font-bold ml-1 text-gray-400">Days</span></p>
+                </div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
+                  <i className="fa-solid fa-umbrella-beach"></i>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Used</p>
+                  <p className="text-xl font-black text-emerald-600">{dashboardStats.used}<span className="text-xs font-bold ml-1 text-emerald-400">Days</span></p>
+                </div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-xl">
+                  <i className="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pending</p>
+                  <p className="text-xl font-black text-amber-600">{dashboardStats.pending}<span className="text-xs font-bold ml-1 text-amber-400">Days</span></p>
+                </div>
+              </div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-xl shadow-lg shadow-indigo-200">
+                  <i className="fa-solid fa-pie-chart"></i>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Remaining Balance</p>
+                  <p className="text-xl font-black text-indigo-600">{dashboardStats.remaining}<span className="text-xs font-bold ml-1 text-indigo-400">Days</span></p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end">
             <div className="flex bg-gray-100 p-1 rounded-xl">
               <button
