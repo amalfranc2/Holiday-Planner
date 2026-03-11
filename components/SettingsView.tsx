@@ -33,13 +33,99 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingBranch, setEditingBranch] = useState<Partial<Branch> | null>(null);
   const [editingStaff, setEditingStaff] = useState<Partial<Staff> | null>(null);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
-  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System'>(role === 'HeadOffice' ? 'Branches' : 'Staff');
+  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config'>(role === 'HeadOffice' ? 'Branches' : 'Staff');
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
+  const [emailStatus, setEmailStatus] = useState<{ configured: boolean, details: any } | null>(null);
+  const [testEmail, setTestEmail] = useState('');
+  const [testMessage, setTestMessage] = useState({ text: '', type: '' });
+  const [isTesting, setIsTesting] = useState(false);
+
+  const [smtpConfig, setSmtpConfig] = useState({
+    host: '',
+    port: 465,
+    secure: true,
+    username: '',
+    password: '',
+    from_email: '',
+    app_url: ''
+  });
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [smtpSaveMessage, setSmtpSaveMessage] = useState({ text: '', type: '' });
 
   const isAdmin = role === 'HeadOffice';
+
+  const fetchSmtpConfig = async () => {
+    try {
+      const res = await fetch('/api/smtp-config');
+      const data = await res.json();
+      if (data.host) setSmtpConfig(data);
+    } catch (err) {
+      console.error('Failed to fetch SMTP config');
+    }
+  };
+
+  const handleSaveSmtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSmtpSaveMessage({ text: 'Saving...', type: 'info' });
+    try {
+      const res = await fetch('/api/smtp-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(smtpConfig)
+      });
+      if (res.ok) {
+        setSmtpSaveMessage({ text: 'Configuration saved successfully!', type: 'success' });
+        fetchEmailStatus();
+        setTimeout(() => setSmtpSaveMessage({ text: '', type: '' }), 3000);
+      } else {
+        setSmtpSaveMessage({ text: 'Failed to save configuration', type: 'error' });
+      }
+    } catch (err) {
+      setSmtpSaveMessage({ text: 'Error saving configuration', type: 'error' });
+    }
+  };
+
+  const fetchEmailStatus = async () => {
+    try {
+      const res = await fetch('/api/email-status');
+      const data = await res.json();
+      setEmailStatus(data);
+    } catch (err) {
+      console.error('Failed to fetch email status');
+    }
+  };
+
+  const handleTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmail) return;
+    setIsTesting(true);
+    setTestMessage({ text: 'Sending test email...', type: 'info' });
+    try {
+      const res = await fetch('/api/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestMessage({ text: 'Test email sent successfully! Check your inbox.', type: 'success' });
+      } else {
+        setTestMessage({ text: `Failed: ${data.error}`, type: 'error' });
+      }
+    } catch (err: any) {
+      setTestMessage({ text: `Error: ${err.message}`, type: 'error' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchEmailStatus();
+    if (isAdmin) fetchSmtpConfig();
+  }, [isAdmin]);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,11 +152,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     if (editingUser.role === 'Manager' && !editingUser.branchId) return;
 
     if (editingUser.id) {
-      onUpdateUsers(users.map(u => u.id === editingUser.id ? editingUser as User : u));
+      onUpdateUsers(users.map(u => u.id === editingUser.id ? { ...u, ...editingUser } as User : u));
     } else {
       const newUser: User = {
         ...editingUser as User,
         id: `user-${Date.now()}`,
+        receiveNotifications: editingUser.receiveNotifications ?? false,
       };
       onUpdateUsers([...users, newUser]);
     }
@@ -116,14 +203,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     if (!editingStaff?.name || !editingStaff?.branchId || !editingStaff?.category) return;
 
     if (editingStaff.id) {
-      onUpdateStaff(staff.map(s => s.id === editingStaff.id ? editingStaff as Staff : s));
+      onUpdateStaff(staff.map(s => s.id === editingStaff.id ? { ...s, ...editingStaff } as Staff : s));
     } else {
       const newStaff: Staff = {
         id: `staff-${Date.now()}`,
-        name: editingStaff.name,
+        name: editingStaff.name!,
         category: editingStaff.category as StaffCategory,
-        branchId: editingStaff.branchId,
+        branchId: editingStaff.branchId!,
         totalAllowance: editingStaff.totalAllowance || systemConfig.defaultAllowance,
+        email: editingStaff.email,
       };
       onUpdateStaff([...staff, newStaff]);
     }
@@ -167,6 +255,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
                 >
                   System
+                </button>
+                <button 
+                  onClick={() => setActiveTab('Config')}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                >
+                  Config
                 </button>
               </>
             )}
@@ -262,6 +356,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               <h3 className="text-xl font-bold text-gray-800">{currentUser.name}</h3>
               <p className="text-sm text-gray-500 capitalize">{currentUser.role} Account</p>
+            </div>
+
+            <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+              <h4 className="font-bold text-gray-700 mb-2">Notification Preferences</h4>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  value={currentUser.email || ''}
+                  onChange={e => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, email: e.target.value } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="your@email.com"
+                />
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Receive Email Notifications</p>
+                  <p className="text-[10px] text-gray-500">Get alerted when new holiday requests are created.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, receiveNotifications: !u.receiveNotifications } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.receiveNotifications ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
             </div>
 
             {isAdmin && (
@@ -389,6 +515,169 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
+        {activeTab === 'Config' && isAdmin && (
+          <div className="max-w-2xl mx-auto space-y-8 py-4">
+            <form onSubmit={handleSaveSmtp} className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <i className="fa-solid fa-envelope text-indigo-600"></i>
+                  Email Engine Configuration
+                </h3>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all">
+                  Save Settings
+                </button>
+              </div>
+
+              {smtpSaveMessage.text && (
+                <div className={`p-3 rounded-xl text-xs font-bold ${smtpSaveMessage.type === 'success' ? 'bg-emerald-50 text-emerald-600' : smtpSaveMessage.type === 'info' ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600'}`}>
+                  {smtpSaveMessage.text}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Host</label>
+                  <input 
+                    type="text" 
+                    value={smtpConfig.host}
+                    onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="smtp.hostinger.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Port</label>
+                  <input 
+                    type="number" 
+                    value={smtpConfig.port}
+                    onChange={e => setSmtpConfig({...smtpConfig, port: parseInt(e.target.value) || 0})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Username</label>
+                  <input 
+                    type="text" 
+                    value={smtpConfig.username}
+                    onChange={e => setSmtpConfig({...smtpConfig, username: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="notifications@yourdomain.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Password</label>
+                  <div className="relative">
+                    <input 
+                      type={showSmtpPassword ? "text" : "password"}
+                      value={smtpConfig.password}
+                      onChange={e => setSmtpConfig({...smtpConfig, password: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600"
+                    >
+                      <i className={`fa-solid ${showSmtpPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">From Email</label>
+                  <input 
+                    type="text" 
+                    value={smtpConfig.from_email}
+                    onChange={e => setSmtpConfig({...smtpConfig, from_email: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="Holiday Planner <notifications@yourdomain.com>"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">App URL (for email links)</label>
+                  <input 
+                    type="text" 
+                    value={smtpConfig.app_url}
+                    onChange={e => setSmtpConfig({...smtpConfig, app_url: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="https://your-app.run.app"
+                  />
+                </div>
+                <div className="flex items-center gap-4 pt-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={smtpConfig.secure}
+                      onChange={e => setSmtpConfig({...smtpConfig, secure: e.target.checked})}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-bold text-gray-700">Use SSL/TLS (Secure)</span>
+                  </label>
+                </div>
+              </div>
+            </form>
+
+            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-4">
+              <h4 className="font-bold text-gray-700 mb-2 flex items-center justify-between">
+                Email Diagnostics
+                <button onClick={fetchEmailStatus} className="text-[10px] text-indigo-600 hover:underline">Refresh</button>
+              </h4>
+              
+              {emailStatus ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${emailStatus.configured ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                    <span className="text-xs font-bold text-gray-600">
+                      Status: {emailStatus.configured ? 'Engine Configured' : 'Engine Not Configured'}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className={`p-2 rounded-lg text-[10px] font-bold border ${emailStatus.details.host ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                      SMTP Host: {emailStatus.details.host ? 'SET' : 'MISSING'}
+                    </div>
+                    <div className={`p-2 rounded-lg text-[10px] font-bold border ${emailStatus.details.user ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                      SMTP User: {emailStatus.details.user ? 'SET' : 'MISSING'}
+                    </div>
+                    <div className={`p-2 rounded-lg text-[10px] font-bold border ${emailStatus.details.pass ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                      SMTP Pass: {emailStatus.details.pass ? 'SET' : 'MISSING'}
+                    </div>
+                    <div className={`p-2 rounded-lg text-[10px] font-bold border ${emailStatus.details.appUrl ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                      App URL: {emailStatus.details.appUrl ? 'SET' : 'MISSING'}
+                    </div>
+                  </div>
+
+                  {emailStatus.configured && (
+                    <form onSubmit={handleTestEmail} className="pt-2 border-t border-gray-200">
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Send Test Email</label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="email" 
+                          value={testEmail}
+                          onChange={e => setTestEmail(e.target.value)}
+                          placeholder="test@email.com"
+                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <button 
+                          disabled={isTesting}
+                          className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {isTesting ? '...' : 'Test'}
+                        </button>
+                      </div>
+                      {testMessage.text && (
+                        <p className={`mt-1 text-[10px] font-bold ${testMessage.type === 'success' ? 'text-emerald-600' : testMessage.type === 'info' ? 'text-indigo-600' : 'text-red-600'}`}>
+                          {testMessage.text}
+                        </p>
+                      )}
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 italic">Loading diagnostics...</p>
+              )}
+            </div>
+          </div>
+        )}
         {activeTab === 'Staff' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -489,12 +778,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       {/* User Edit Modal */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-bold text-gray-800">{editingUser.id ? 'Edit User' : 'Create New User'}</h3>
               <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600"><i className="fa-solid fa-xmark"></i></button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Full Name</label>
                 <input 
@@ -526,6 +815,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email Address (Optional)</label>
+                <input 
+                  type="email" 
+                  value={editingUser.email || ''} 
+                  onChange={e => setEditingUser({...editingUser, email: e.target.value})}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  placeholder="e.g. user@example.com"
+                />
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Receive Notifications</p>
+                  <p className="text-[10px] text-gray-500">Enable email alerts for this user.</p>
+                </div>
+                <button 
+                  onClick={() => setEditingUser({...editingUser, receiveNotifications: !editingUser.receiveNotifications})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${editingUser.receiveNotifications ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editingUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Role</label>
                 <select 
                   value={editingUser.role} 
@@ -552,7 +863,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
             </div>
-            <div className="p-6 bg-gray-50 flex gap-3">
+            <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
               <button onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
               <button onClick={handleSaveUser} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Save User</button>
             </div>
@@ -563,12 +874,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Staff Edit Modal */}
       {editingStaff && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-bold text-gray-800">{editingStaff.id ? 'Edit Staff Member' : 'Add New Staff'}</h3>
               <button onClick={() => setEditingStaff(null)} className="text-gray-400 hover:text-gray-600"><i className="fa-solid fa-xmark"></i></button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Full Name</label>
                 <input 
@@ -586,7 +897,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={e => setEditingStaff({...editingStaff, category: e.target.value as StaffCategory})}
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                 >
-                  {CATEGORIES.map(cat => (
+                  {CATEGORIES.filter(cat => cat !== 'Manager' || isAdmin).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -599,6 +910,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={e => setEditingStaff({...editingStaff, totalAllowance: parseInt(e.target.value) || 0})}
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email Address (Optional)</label>
+                <input 
+                  type="email" 
+                  value={editingStaff.email || ''} 
+                  onChange={e => setEditingStaff({...editingStaff, email: e.target.value})}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  placeholder="e.g. staff@example.com"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">Used for approval notifications.</p>
               </div>
               {isAdmin && (
                 <div>
@@ -615,7 +937,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
             </div>
-            <div className="p-6 bg-gray-50 flex gap-3">
+            <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
               <button onClick={() => setEditingStaff(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
               <button onClick={handleSaveStaff} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Save Staff</button>
             </div>

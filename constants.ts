@@ -10,7 +10,7 @@ export const BRANCHES: Branch[] = [
   { id: 'br-5', name: 'Bristol South', location: 'Temple Meads' },
 ];
 
-export const CATEGORIES: ('Kitchen' | 'Counter' | 'Driver')[] = ['Kitchen', 'Counter', 'Driver'];
+export const CATEGORIES: ('Kitchen' | 'Counter' | 'Manager')[] = ['Kitchen', 'Counter', 'Manager'];
 
 // --- EDIT STAFF NAMES HERE ---
 const STAFF_NAMES = [

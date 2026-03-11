@@ -147,7 +147,7 @@ const App: React.FC = () => {
   const handleAddRequest = (data: Partial<HolidayRequest>) => {
     const newReq: HolidayRequest = {
       ...data,
-      id: `req-${Date.now()}`,
+      id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       status: data.status || 'Pending',
       createdAt: new Date().toISOString()
     } as HolidayRequest;
@@ -160,6 +160,17 @@ const App: React.FC = () => {
 
   const handleDeleteRequest = (id: string) => {
     setRequests(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleUpdateUsers = (updatedUsers: User[]) => {
+    setUsers(updatedUsers);
+    if (currentUser) {
+      const updatedMe = updatedUsers.find(u => u.id === currentUser.id);
+      if (updatedMe) {
+        setCurrentUser(updatedMe);
+        localStorage.setItem('holiday_session', JSON.stringify(updatedMe));
+      }
+    }
   };
 
   if (loading) {
@@ -250,7 +261,7 @@ const App: React.FC = () => {
           systemConfig={systemConfig}
           onUpdateBranches={setBranches}
           onUpdateStaff={setStaff}
-          onUpdateUsers={setUsers}
+          onUpdateUsers={handleUpdateUsers}
           onUpdateConfig={setSystemConfig}
         />
       )}
