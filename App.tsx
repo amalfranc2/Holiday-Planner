@@ -6,7 +6,7 @@ import SettingsView from './components/SettingsView';
 import LoginView from './components/LoginView';
 import Reports from './components/Reports';
 import { UserRole, HolidayRequest, Branch, Staff, User, SystemConfig } from './types';
-import { BRANCHES as INITIAL_BRANCHES, MOCK_STAFF as INITIAL_STAFF } from './constants';
+import { BRANCHES as INITIAL_BRANCHES, MOCK_STAFF as INITIAL_STAFF, THEMES } from './constants';
 
 const INITIAL_CONFIG: SystemConfig = {
   primeTimeMonths: [6, 7, 11], // July, August, December
@@ -36,6 +36,56 @@ const App: React.FC = () => {
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_CONFIG);
   
   const [currentBranchId, setCurrentBranchId] = useState<string>(INITIAL_BRANCHES[0].id);
+  const [isShrunk, setIsShrunk] = useState(false);
+
+  // Apply Theme
+  useEffect(() => {
+    if (currentUser?.themeColor) {
+      const theme = THEMES[currentUser.themeColor as keyof typeof THEMES] || THEMES.indigo;
+      Object.entries(theme).forEach(([key, value]) => {
+        document.documentElement.style.setProperty(`--primary-${key}`, value);
+      });
+    } else {
+      // Reset to default indigo if no theme is set
+      Object.entries(THEMES.indigo).forEach(([key, value]) => {
+        document.documentElement.style.setProperty(`--primary-${key}`, value);
+      });
+    }
+  }, [currentUser?.themeColor]);
+
+  // Scroll listener for shrinking header
+  useEffect(() => {
+    const root = document.getElementById('root');
+    const handleScroll = () => {
+      const isLandscape = window.innerWidth > window.innerHeight && window.innerHeight < 500;
+      const scrollY = root ? root.scrollTop : window.scrollY;
+      
+      setIsShrunk(prev => {
+        if (isLandscape) return true;
+        // Hysteresis: shrink at 60, expand at 30 to prevent flickering
+        if (prev) return scrollY > 30;
+        return scrollY > 60;
+      });
+    };
+    
+    if (root) {
+      root.addEventListener('scroll', handleScroll);
+    } else {
+      window.addEventListener('scroll', handleScroll);
+    }
+    
+    window.addEventListener('resize', handleScroll);
+    handleScroll();
+    
+    return () => {
+      if (root) {
+        root.removeEventListener('scroll', handleScroll);
+      } else {
+        window.removeEventListener('scroll', handleScroll);
+      }
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, []);
 
   // API Persistence
   useEffect(() => {
@@ -177,7 +227,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-gray-500 font-bold animate-pulse">Connecting to Vercel Database...</p>
         </div>
       </div>
@@ -206,7 +256,7 @@ const App: React.FC = () => {
           </div>
           <button 
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md"
+            className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all shadow-md"
           >
             Retry Connection
           </button>
@@ -229,6 +279,7 @@ const App: React.FC = () => {
       branches={branches}
       currentView={currentView}
       onViewChange={setCurrentView}
+      isShrunk={isShrunk}
     >
       {currentView === 'Calendar' ? (
         <MainView 
@@ -242,6 +293,7 @@ const App: React.FC = () => {
           onAddRequest={handleAddRequest}
           onUpdateRequest={handleUpdateRequest}
           onDeleteRequest={handleDeleteRequest}
+          isShrunk={isShrunk}
         />
       ) : currentView === 'Reports' ? (
         <Reports 

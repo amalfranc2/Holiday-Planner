@@ -71,8 +71,17 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
 
   if (!isOpen) return null;
 
-  const branchStaff = staff.filter(s => s.branchId === selectedBranchId);
+  const isHO = role === 'HeadOffice';
+  
+  // Logic: Managers can only create requests for their own branch.
+  // If viewing another branch, we force the branchId to their own for new requests.
+  const effectiveBranchId = (role === 'Manager' && !editingRequest) 
+    ? currentUser.branchId 
+    : selectedBranchId;
+
+  const branchStaff = staff.filter(s => s.branchId === effectiveBranchId);
   const selectedStaff = staff.find(s => s.id === formData.staffId);
+  const effectiveBranch = branches.find(b => b.id === effectiveBranchId);
 
   const calculateUsedDays = (staffId: string) => {
     return requests
@@ -139,14 +148,13 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       endDate: formData.endDate,
       notes: formData.notes,
       status: formData.status,
-      branchId: selectedBranchId,
+      branchId: effectiveBranchId,
       id: editingRequest?.id
     });
     onClose();
   };
 
-  const isHO = role === 'HeadOffice';
-  const isOwnBranch = editingRequest ? (editingRequest.branchId === currentUser.branchId) : (selectedBranchId === currentUser.branchId);
+  const isOwnBranch = editingRequest ? (editingRequest.branchId === currentUser.branchId) : (effectiveBranchId === currentUser.branchId);
   const isReadOnly = !isHO && editingRequest && !isOwnBranch;
 
   const handleWithdraw = () => {
@@ -162,9 +170,16 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-900">
-            {editingRequest ? 'Edit Holiday Request' : 'New Holiday Request'}
-          </h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              {editingRequest ? 'Edit Holiday Request' : 'New Holiday Request'}
+            </h2>
+            {!editingRequest && (
+              <p className="text-[10px] font-bold text-primary-600 uppercase tracking-wider mt-1">
+                For Branch: {effectiveBranch?.name || 'Unknown'}
+              </p>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <i className="fa-solid fa-xmark text-xl"></i>
           </button>
@@ -177,7 +192,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
               disabled={isReadOnly || !!editingRequest}
               value={formData.staffId}
               onChange={(e) => setFormData(prev => ({ ...prev, staffId: e.target.value }))}
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 transition-all"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-primary-500 transition-all"
               required
             >
               <option value="">Select Staff</option>
@@ -188,7 +203,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
             {selectedStaff && (
               <div className="mt-2 space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < 0 ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full ${remainingDays < 0 ? 'bg-red-100 text-red-700' : 'bg-primary-100 text-primary-700'}`}>
                     Allowance: {totalUsedIfApproved}/{selectedStaff.totalAllowance} used ({remainingDays} left)
                   </div>
                   <div className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
@@ -215,7 +230,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                 readOnly={isReadOnly}
                 value={formData.startDate}
                 onChange={(e) => handleStartDateChange(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 transition-all"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-primary-500 transition-all"
                 required
               />
             </div>
@@ -227,7 +242,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                 readOnly={isReadOnly}
                 value={formData.duration}
                 onChange={(e) => handleDurationChange(parseInt(e.target.value) || 1)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 transition-all"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-primary-500 transition-all"
                 required
               />
             </div>
@@ -241,10 +256,10 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                 readOnly={isReadOnly}
                 value={formData.endDate}
                 onChange={(e) => handleEndDateChange(e.target.value)}
-                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 transition-all"
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-primary-500 transition-all"
                 required
               />
-              <div className="bg-indigo-50 text-indigo-700 px-3 py-2.5 rounded-lg text-xs font-bold whitespace-nowrap">
+              <div className="bg-primary-50 text-primary-700 px-3 py-2.5 rounded-lg text-xs font-bold whitespace-nowrap">
                 Total: {formData.duration} {formData.duration === 1 ? 'Day' : 'Days'}
               </div>
             </div>
@@ -259,7 +274,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
                   disabled={!isHO}
                   checked={formData.status === 'Pending'}
                   onChange={() => setFormData(prev => ({ ...prev, status: 'Pending' }))}
-                  className="w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
                 />
                 <span className="text-sm font-medium text-gray-700">Pending</span>
               </label>
@@ -304,7 +319,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               placeholder="Any additional info..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 transition-all h-24 resize-none"
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-primary-500 transition-all h-24 resize-none"
             />
           </div>
 
@@ -350,7 +365,7 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
               {!isReadOnly && (
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md"
+                  className="flex-1 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md"
                 >
                   {editingRequest ? 'Update' : 'Save'}
                 </button>

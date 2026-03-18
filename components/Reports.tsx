@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Branch, Staff, HolidayRequest, StaffCategory, User } from '../types';
 import { format, startOfMonth, addMonths, isWithinInterval, parseISO, endOfMonth, differenceInDays } from 'date-fns';
-import { CATEGORIES } from '../constants';
+import { CATEGORIES, THEMES } from '../constants';
 
 interface ReportsProps {
   branches: Branch[];
@@ -15,16 +17,12 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
   const managerBranchId = currentUser.branchId;
 
   const [reportType, setReportType] = useState<'branch' | 'staff'>('branch');
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(isManager ? (managerBranchId || 'all') : 'all');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
   const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Manager']);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
-  // Update selectedBranchId if currentUser changes (though unlikely during a session)
-  useEffect(() => {
-    if (isManager && managerBranchId) {
-      setSelectedBranchId(managerBranchId);
-    }
-  }, [isManager, managerBranchId]);
+  // No longer forcing selectedBranchId to managerBranchId for managers globally
+  // but we will use it in the filtering logic
   
   // Default date range: start of current month to end of next month (2 months total)
   const defaultStart = startOfMonth(new Date());
@@ -85,7 +83,13 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
     return staff
       .filter(s => {
         const categoryMatch = selectedCategories.includes(s.category);
-        const branchMatch = selectedBranchId === 'all' || s.branchId === selectedBranchId;
+        
+        // Managers can only see staff from their own branch in Staff History mode
+        let branchMatch = selectedBranchId === 'all' || s.branchId === selectedBranchId;
+        if (isManager && managerBranchId) {
+          branchMatch = s.branchId === managerBranchId;
+        }
+        
         return categoryMatch && branchMatch;
       })
       .map(s => {
@@ -120,8 +124,107 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
     );
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownload = () => {
+    const theme = THEMES[currentUser.themeColor || 'indigo'];
+    const primary600 = theme['600'];
+    // Convert hex to RGB array for jsPDF
+    const hexToRgb = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b];
+    };
+    const headerColor = hexToRgb(primary600) as [number, number, number];
+
+    const doc = new jsPDF();
+    const title = reportType === 'branch' ? 'Branch-wise Holiday Report' : 'Staff Holiday History Report';
+    const dateStr = format(new Date(), 'PPP');
+    
+    doc.setFontSize(20);
+    doc.text(title, 14, 22);
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${dateStr}`, 14, 30);
+    
+    if (reportType === 'branch') {
+      doc.text(`Period: ${format(parseISO(startDate), 'PP')} - ${format(parseISO(endDate), 'PP')}`, 14, 38);
+      
+      let currentY = 48;
+      
+      branchReports.forEach((branch, index) => {
+        // Check if we need a new page for the header (if less than 40mm left)
+        if (currentY > 250) {
+          doc.addPage();
+          currentY = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(0);
+        doc.text(`${branch.name} (${branch.location})`, 14, currentY);
+        doc.setFontSize(10);
+        doc.text(`Pending: ${branch.pendingCount} | Approved: ${branch.approvedCount} | Total: ${branch.requests.length}`, 14, currentY + 7);
+        
+        const tableData = branch.requests.map(req => {
+          const s = staff.find(st => st.id === req.staffId);
+          return [
+            s?.name || 'Unknown',
+            s?.category || '-',
+            format(parseISO(req.startDate), 'PP'),
+            format(parseISO(req.endDate), 'PP'),
+            calculateDays(req.startDate, req.endDate),
+            req.status
+          ];
+        });
+        
+        autoTable(doc, {
+          startY: currentY + 12,
+          head: [['Staff Name', 'Category', 'Start Date', 'End Date', 'Days', 'Status']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { fillColor: headerColor }
+        });
+        
+        currentY = (doc as any).lastAutoTable.finalY + 20;
+      });
+    } else {
+      doc.text(`Year: ${selectedYear}`, 14, 38);
+      
+      let currentY = 48;
+      
+      staffReports.forEach((s, index) => {
+        // Check if we need a new page for the header (if less than 40mm left)
+        if (currentY > 250) {
+          doc.addPage();
+          currentY = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(0);
+        doc.text(`${s.name} (${s.category} • ${s.branchName})`, 14, currentY);
+        doc.setFontSize(10);
+        doc.text(`Allowance: ${s.totalAllowance}d | Used: ${s.approvedDays}d | Pending: ${s.pendingDays}d | Balance: ${s.balance}d`, 14, currentY + 7);
+        
+        const tableData = s.history.map(req => [
+          `${format(parseISO(req.startDate), 'MMM d')} - ${format(parseISO(req.endDate), 'MMM d, yyyy')}`,
+          calculateDays(req.startDate, req.endDate),
+          req.status,
+          req.notes || '-',
+          format(parseISO(req.createdAt), 'PP')
+        ]);
+        
+        autoTable(doc, {
+          startY: currentY + 12,
+          head: [['Period', 'Days', 'Status', 'Notes', 'Created']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { fillColor: headerColor }
+        });
+        
+        currentY = (doc as any).lastAutoTable.finalY + 20;
+      });
+    }
+    
+    doc.save(`holiday-report-${reportType}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   return (
@@ -131,7 +234,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="flex-1 space-y-4">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <i className="fa-solid fa-file-invoice text-indigo-600"></i>
+              <i className="fa-solid fa-file-invoice text-primary-600"></i>
               Holiday Reports
             </h2>
             
@@ -142,7 +245,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                   <button
                     onClick={() => setReportType('branch')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      reportType === 'branch' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      reportType === 'branch' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
                     Branch-wise
@@ -150,7 +253,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                   <button
                     onClick={() => setReportType('staff')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      reportType === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      reportType === 'staff' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
                     Staff History
@@ -161,9 +264,12 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
               <div className="flex flex-col">
                 <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Branch Filter</label>
                 <select 
-                  value={selectedBranchId}
+                  value={isManager && reportType === 'staff' ? (managerBranchId || 'all') : selectedBranchId}
                   onChange={(e) => setSelectedBranchId(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  disabled={isManager && reportType === 'staff'}
+                  className={`px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white ${
+                    isManager && reportType === 'staff' ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
                   <option value="all">All Branches</option>
                   {branches.map(b => (
@@ -181,7 +287,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       onClick={() => toggleCategory(cat)}
                       className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
                         selectedCategories.includes(cat) 
-                          ? 'bg-white shadow-sm text-indigo-600' 
+                          ? 'bg-white shadow-sm text-primary-600' 
                           : 'text-gray-400 hover:text-gray-600'
                       }`}
                     >
@@ -199,7 +305,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </div>
                   <div className="flex flex-col">
@@ -208,7 +314,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </div>
                 </div>
@@ -221,7 +327,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                         key={year}
                         onClick={() => setSelectedYear(year)}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          selectedYear === year ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                          selectedYear === year ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
                         }`}
                       >
                         {year}
@@ -234,11 +340,11 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
           </div>
 
           <button
-            onClick={handlePrint}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md"
+            onClick={handleDownload}
+            className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all flex items-center gap-2 shadow-md"
           >
-            <i className="fa-solid fa-print"></i>
-            Print Report
+            <i className="fa-solid fa-download"></i>
+            Download Report
           </button>
         </div>
       </div>
@@ -255,10 +361,10 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
 
         {reportType === 'branch' ? (
           <div className="space-y-12">
-            <div className="bg-indigo-50 p-4 rounded-xl flex gap-8 border border-indigo-100 mb-8 print:hidden">
+            <div className="bg-primary-50 p-4 rounded-xl flex gap-8 border border-primary-100 mb-8 print:hidden">
               <div>
-                <p className="text-[10px] uppercase font-bold text-indigo-400">Total Requests</p>
-                <p className="text-xl font-bold text-indigo-700">{filteredRequests.length}</p>
+                <p className="text-[10px] uppercase font-bold text-primary-400">Total Requests</p>
+                <p className="text-xl font-bold text-primary-700">{filteredRequests.length}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase font-bold text-emerald-400">Approved Days</p>
@@ -278,7 +384,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
             ) : (
               branchReports.map(branch => (
                 <div key={branch.id} className="break-inside-avoid">
-                  <h3 className="text-lg font-bold text-gray-800 border-b-2 border-indigo-100 pb-2 mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-gray-800 border-b-2 border-primary-100 pb-2 mb-4 flex items-center justify-between">
                     <span>{branch.name} <span className="text-gray-400 font-normal text-sm">({branch.location})</span></span>
                     <div className="flex gap-4">
                       <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
@@ -287,7 +393,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
                         {branch.approvedCount} Approved
                       </span>
-                      <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">
+                      <span className="text-xs font-medium text-primary-600 bg-primary-50 px-2 py-1 rounded-lg">
                         {branch.requests.length} Total
                       </span>
                     </div>
@@ -339,10 +445,10 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
           </div>
         ) : (
           <div className="space-y-12">
-            <div className="bg-indigo-50 p-4 rounded-xl flex gap-8 border border-indigo-100 mb-8 print:hidden">
+            <div className="bg-primary-50 p-4 rounded-xl flex gap-8 border border-primary-100 mb-8 print:hidden">
               <div>
-                <p className="text-[10px] uppercase font-bold text-indigo-400">Total Staff</p>
-                <p className="text-xl font-bold text-indigo-700">{staffReports.length}</p>
+                <p className="text-[10px] uppercase font-bold text-primary-400">Total Staff</p>
+                <p className="text-xl font-bold text-primary-700">{staffReports.length}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase font-bold text-emerald-400">Total Used</p>
@@ -359,24 +465,24 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
             </div>
             {staffReports.map(s => (
               <div key={s.id} className="break-inside-avoid">
-                <div className="flex items-end justify-between border-b-2 border-indigo-100 pb-2 mb-4">
+                <div className="flex items-end justify-between border-b-2 border-primary-100 pb-2 mb-4">
                   <div className="flex items-center gap-6">
                     <div>
                       <h3 className="text-lg font-bold text-gray-800">{s.name}</h3>
                       <p className="text-xs text-gray-500">{s.category} • {s.branchName}</p>
                     </div>
                     <div className="flex gap-2">
-                      <div className="bg-indigo-50 px-3 py-1 rounded-lg">
-                        <p className="text-[8px] uppercase font-bold text-indigo-400 leading-none mb-1">Allowance</p>
-                        <p className="text-xs font-bold text-indigo-700">{s.totalAllowance}d</p>
+                      <div className="bg-primary-50 px-3 py-1 rounded-lg">
+                        <p className="text-[8px] uppercase font-bold text-primary-400 leading-none mb-1">Allowance</p>
+                        <p className="text-xs font-bold text-primary-700">{s.totalAllowance}d</p>
                       </div>
                       <div className="bg-emerald-50 px-3 py-1 rounded-lg">
                         <p className="text-[8px] uppercase font-bold text-emerald-400 leading-none mb-1">Used</p>
                         <p className="text-xs font-bold text-emerald-700">{s.approvedDays}d</p>
                       </div>
-                      <div className="bg-amber-50 px-3 py-1 rounded-lg">
-                        <p className="text-[8px] uppercase font-bold text-amber-400 leading-none mb-1">Pending</p>
-                        <p className="text-xs font-bold text-amber-700">{s.pendingDays}d</p>
+                      <div className="bg-primary-50 px-3 py-1 rounded-lg">
+                        <p className="text-[8px] uppercase font-bold text-primary-400 leading-none mb-1">Pending</p>
+                        <p className="text-xs font-bold text-primary-700">{s.pendingDays}d</p>
                       </div>
                       <div className={`${s.balance < 0 ? 'bg-red-50' : 'bg-emerald-50'} px-3 py-1 rounded-lg`}>
                         <p className={`text-[8px] uppercase font-bold ${s.balance < 0 ? 'text-red-400' : 'text-emerald-400'} leading-none mb-1`}>

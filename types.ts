@@ -43,6 +43,7 @@ export interface User {
   name: string;
   email?: string;
   receiveNotifications?: boolean;
+  themeColor?: string;
 }
 
 export interface UserContextType {

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Branch, Staff, UserRole, StaffCategory, User, SystemConfig } from '../types';
-import { CATEGORIES } from '../constants';
+import { CATEGORIES, THEMES } from '../constants';
 
 interface SettingsViewProps {
   role: UserRole;
@@ -240,25 +240,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <>
                 <button 
                   onClick={() => setActiveTab('Branches')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Branches' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Branches' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
                 >
                   Branches
                 </button>
                 <button 
                   onClick={() => setActiveTab('Users')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Users' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Users' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
                 >
                   Users
                 </button>
                 <button 
                   onClick={() => setActiveTab('System')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
                 >
                   System
                 </button>
                 <button 
                   onClick={() => setActiveTab('Config')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
                 >
                   Config
                 </button>
@@ -266,13 +266,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             )}
             <button 
               onClick={() => setActiveTab('Staff')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Staff' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Staff' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
             >
               Staff
             </button>
             <button 
               onClick={() => setActiveTab('Profile')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Profile' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Profile' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
             >
               Profile
             </button>
@@ -283,7 +283,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="max-w-2xl mx-auto space-y-8 py-4">
             <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-6">
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <i className="fa-solid fa-sliders text-indigo-600"></i>
+                <i className="fa-solid fa-sliders text-primary-600"></i>
                 Advanced Feature Configuration
               </h3>
               
@@ -295,7 +295,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       type="number" 
                       value={systemConfig.defaultAllowance}
                       onChange={e => onUpdateConfig({...systemConfig, defaultAllowance: parseInt(e.target.value) || 0})}
-                      className="w-32 px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-32 px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                     <p className="text-xs text-gray-500 italic">This value is used as the default when creating new staff members.</p>
                   </div>
@@ -318,8 +318,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                           }}
                           className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
                             isSelected 
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
-                              : 'bg-white border-gray-200 text-gray-500 hover:border-indigo-300'
+                              ? 'bg-primary-600 border-primary-600 text-white shadow-md' 
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-primary-300'
                           }`}
                         >
                           {monthName}
@@ -351,11 +351,47 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         {activeTab === 'Profile' && (
           <div className="max-w-md mx-auto space-y-6 py-4">
             <div className="text-center mb-8">
-              <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-bold">
+              <div className="w-20 h-20 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-bold">
                 {currentUser.name[0]}
               </div>
               <h3 className="text-xl font-bold text-gray-800">{currentUser.name}</h3>
               <p className="text-sm text-gray-500 capitalize">{currentUser.role} Account</p>
+            </div>
+
+            <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+              <h4 className="font-bold text-gray-700 mb-2">Theme Customization</h4>
+              <p className="text-[10px] text-gray-500 mb-4">Select your preferred application color theme.</p>
+              <div className="grid grid-cols-5 gap-3 mb-6">
+                {Object.keys(THEMES).map((themeName) => (
+                  <button
+                    key={themeName}
+                    onClick={() => {
+                      const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, themeColor: themeName } : u);
+                      onUpdateUsers(updatedUsers);
+                    }}
+                    className={`group relative flex flex-col items-center gap-2 p-2 rounded-xl transition-all border-2 ${
+                      (currentUser.themeColor || 'indigo') === themeName 
+                        ? 'border-primary-600 bg-white shadow-md' 
+                        : 'border-transparent hover:bg-white hover:shadow-sm'
+                    }`}
+                  >
+                    <div 
+                      className="w-8 h-8 rounded-full shadow-inner"
+                      style={{ backgroundColor: THEMES[themeName as keyof typeof THEMES][600] }}
+                    ></div>
+                    <span className={`text-[10px] font-bold capitalize ${
+                      (currentUser.themeColor || 'indigo') === themeName ? 'text-primary-600' : 'text-gray-500'
+                    }`}>
+                      {themeName}
+                    </span>
+                    {(currentUser.themeColor || 'indigo') === themeName && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary-600 text-white rounded-full flex items-center justify-center text-[8px]">
+                        <i className="fa-solid fa-check"></i>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
@@ -369,7 +405,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, email: e.target.value } : u);
                     onUpdateUsers(updatedUsers);
                   }}
-                  className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                   placeholder="your@email.com"
                 />
               </div>
@@ -383,7 +419,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, receiveNotifications: !u.receiveNotifications } : u);
                     onUpdateUsers(updatedUsers);
                   }}
-                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.receiveNotifications ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.receiveNotifications ? 'bg-primary-600' : 'bg-gray-300'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
                 </button>
@@ -404,7 +440,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="password" 
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     placeholder="Min 4 characters"
                   />
                 </div>
@@ -414,10 +450,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="password" 
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
-                <button type="submit" className="w-full py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">
+                <button type="submit" className="w-full py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">
                   Update Password
                 </button>
               </form>
@@ -438,7 +474,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <h3 className="text-lg font-semibold text-gray-700">User Accounts</h3>
               <button 
                 onClick={() => setEditingUser({ name: '', username: '', password: '', role: 'Manager' })}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all"
+                className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
               >
                 <i className="fa-solid fa-plus mr-2"></i> Create User
               </button>
@@ -462,7 +498,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       <td className="p-4 text-sm text-gray-600">{u.username}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${
-                          u.role === 'HeadOffice' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-700'
+                          u.role === 'HeadOffice' ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-700'
                         }`}>
                           {u.role}
                         </span>
@@ -472,7 +508,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-indigo-600"><i className="fa-solid fa-pen"></i></button>
+                          <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-primary-600"><i className="fa-solid fa-pen"></i></button>
                           <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-gray-400 hover:text-red-600"><i className="fa-solid fa-trash"></i></button>
                         </div>
                       </td>
@@ -490,7 +526,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <h3 className="text-lg font-semibold text-gray-700">All Branches</h3>
               <button 
                 onClick={() => setEditingBranch({ name: '', location: '' })}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all"
+                className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
               >
                 <i className="fa-solid fa-plus mr-2"></i> Add Branch
               </button>
@@ -498,14 +534,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {branches.map(branch => (
-                <div key={branch.id} className="p-4 border border-gray-100 rounded-xl hover:border-indigo-200 transition-all group">
+                <div key={branch.id} className="p-4 border border-gray-100 rounded-xl hover:border-primary-200 transition-all group">
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="font-bold text-gray-800">{branch.name}</h4>
                       <p className="text-xs text-gray-500">{branch.location}</p>
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => setEditingBranch(branch)} className="p-2 text-gray-400 hover:text-indigo-600"><i className="fa-solid fa-pen"></i></button>
+                      <button onClick={() => setEditingBranch(branch)} className="p-2 text-gray-400 hover:text-primary-600"><i className="fa-solid fa-pen"></i></button>
                       <button onClick={() => handleDeleteBranch(branch.id)} className="p-2 text-gray-400 hover:text-red-600"><i className="fa-solid fa-trash"></i></button>
                     </div>
                   </div>
@@ -520,16 +556,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             <form onSubmit={handleSaveSmtp} className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                  <i className="fa-solid fa-envelope text-indigo-600"></i>
+                  <i className="fa-solid fa-envelope text-primary-600"></i>
                   Email Engine Configuration
                 </h3>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all">
+                <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-xl text-xs font-bold hover:bg-primary-700 transition-all">
                   Save Settings
                 </button>
               </div>
 
               {smtpSaveMessage.text && (
-                <div className={`p-3 rounded-xl text-xs font-bold ${smtpSaveMessage.type === 'success' ? 'bg-emerald-50 text-emerald-600' : smtpSaveMessage.type === 'info' ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600'}`}>
+                <div className={`p-3 rounded-xl text-xs font-bold ${smtpSaveMessage.type === 'success' ? 'bg-emerald-50 text-emerald-600' : smtpSaveMessage.type === 'info' ? 'bg-primary-50 text-primary-600' : 'bg-red-50 text-red-600'}`}>
                   {smtpSaveMessage.text}
                 </div>
               )}
@@ -541,7 +577,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="text" 
                     value={smtpConfig.host}
                     onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     placeholder="smtp.hostinger.com"
                   />
                 </div>
@@ -551,7 +587,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="number" 
                     value={smtpConfig.port}
                     onChange={e => setSmtpConfig({...smtpConfig, port: parseInt(e.target.value) || 0})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
                 <div>
@@ -560,7 +596,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="text" 
                     value={smtpConfig.username}
                     onChange={e => setSmtpConfig({...smtpConfig, username: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     placeholder="notifications@yourdomain.com"
                   />
                 </div>
@@ -571,12 +607,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       type={showSmtpPassword ? "text" : "password"}
                       value={smtpConfig.password}
                       onChange={e => setSmtpConfig({...smtpConfig, password: e.target.value})}
-                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                     <button 
                       type="button"
                       onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
                     >
                       <i className={`fa-solid ${showSmtpPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                     </button>
@@ -588,7 +624,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="text" 
                     value={smtpConfig.from_email}
                     onChange={e => setSmtpConfig({...smtpConfig, from_email: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     placeholder="Holiday Planner <notifications@yourdomain.com>"
                   />
                 </div>
@@ -598,7 +634,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     type="text" 
                     value={smtpConfig.app_url}
                     onChange={e => setSmtpConfig({...smtpConfig, app_url: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
                     placeholder="https://your-app.run.app"
                   />
                 </div>
@@ -608,7 +644,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       type="checkbox" 
                       checked={smtpConfig.secure}
                       onChange={e => setSmtpConfig({...smtpConfig, secure: e.target.checked})}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
                     <span className="text-sm font-bold text-gray-700">Use SSL/TLS (Secure)</span>
                   </label>
@@ -619,7 +655,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-4">
               <h4 className="font-bold text-gray-700 mb-2 flex items-center justify-between">
                 Email Diagnostics
-                <button onClick={fetchEmailStatus} className="text-[10px] text-indigo-600 hover:underline">Refresh</button>
+                <button onClick={fetchEmailStatus} className="text-[10px] text-primary-600 hover:underline">Refresh</button>
               </h4>
               
               {emailStatus ? (
@@ -655,17 +691,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                           value={testEmail}
                           onChange={e => setTestEmail(e.target.value)}
                           placeholder="test@email.com"
-                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-primary-500"
                         />
                         <button 
                           disabled={isTesting}
-                          className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                          className="px-3 py-1.5 bg-primary-600 text-white text-xs font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50"
                         >
                           {isTesting ? '...' : 'Test'}
                         </button>
                       </div>
                       {testMessage.text && (
-                        <p className={`mt-1 text-[10px] font-bold ${testMessage.type === 'success' ? 'text-emerald-600' : testMessage.type === 'info' ? 'text-indigo-600' : 'text-red-600'}`}>
+                        <p className={`mt-1 text-[10px] font-bold ${testMessage.type === 'success' ? 'text-emerald-600' : testMessage.type === 'info' ? 'text-primary-600' : 'text-red-600'}`}>
                           {testMessage.text}
                         </p>
                       )}
@@ -686,7 +722,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </h3>
               <button 
                 onClick={() => setEditingStaff({ name: '', branchId: currentBranchId, category: 'Kitchen' })}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all"
+                className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
               >
                 <i className="fa-solid fa-plus mr-2"></i> Add Staff
               </button>
@@ -724,7 +760,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       )}
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setEditingStaff(s)} className="p-2 text-gray-400 hover:text-indigo-600"><i className="fa-solid fa-pen"></i></button>
+                          <button onClick={() => setEditingStaff(s)} className="p-2 text-gray-400 hover:text-primary-600"><i className="fa-solid fa-pen"></i></button>
                           <button onClick={() => handleDeleteStaff(s.id)} className="p-2 text-gray-400 hover:text-red-600"><i className="fa-solid fa-trash"></i></button>
                         </div>
                       </td>
@@ -752,7 +788,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text" 
                   value={editingBranch.name} 
                   onChange={e => setEditingBranch({...editingBranch, name: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. London Central"
                 />
               </div>
@@ -762,14 +798,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text" 
                   value={editingBranch.location} 
                   onChange={e => setEditingBranch({...editingBranch, location: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. Oxford Street"
                 />
               </div>
             </div>
             <div className="p-6 bg-gray-50 flex gap-3">
               <button onClick={() => setEditingBranch(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveBranch} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Save Branch</button>
+              <button onClick={handleSaveBranch} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Branch</button>
             </div>
           </div>
         </div>
@@ -790,7 +826,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text" 
                   value={editingUser.name} 
                   onChange={e => setEditingUser({...editingUser, name: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. Alice Smith"
                 />
               </div>
@@ -800,7 +836,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text" 
                   value={editingUser.username} 
                   onChange={e => setEditingUser({...editingUser, username: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. asmith"
                 />
               </div>
@@ -810,7 +846,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="password" 
                   value={editingUser.password} 
                   onChange={e => setEditingUser({...editingUser, password: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="Enter password"
                 />
               </div>
@@ -820,7 +856,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="email" 
                   value={editingUser.email || ''} 
                   onChange={e => setEditingUser({...editingUser, email: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. user@example.com"
                 />
               </div>
@@ -831,7 +867,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <button 
                   onClick={() => setEditingUser({...editingUser, receiveNotifications: !editingUser.receiveNotifications})}
-                  className={`w-12 h-6 rounded-full transition-all relative ${editingUser.receiveNotifications ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  className={`w-12 h-6 rounded-full transition-all relative ${editingUser.receiveNotifications ? 'bg-primary-600' : 'bg-gray-300'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${editingUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
                 </button>
@@ -841,7 +877,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <select 
                   value={editingUser.role} 
                   onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                 >
                   <option value="HeadOffice">Head Office (Admin)</option>
                   <option value="Manager">Branch Manager</option>
@@ -853,7 +889,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   <select 
                     value={editingUser.branchId} 
                     onChange={e => setEditingUser({...editingUser, branchId: e.target.value})}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   >
                     <option value="">Select Branch</option>
                     {branches.map(b => (
@@ -865,7 +901,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
               <button onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveUser} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Save User</button>
+              <button onClick={handleSaveUser} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save User</button>
             </div>
           </div>
         </div>
@@ -886,7 +922,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text" 
                   value={editingStaff.name} 
                   onChange={e => setEditingStaff({...editingStaff, name: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. John Doe"
                 />
               </div>
@@ -895,7 +931,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <select 
                   value={editingStaff.category} 
                   onChange={e => setEditingStaff({...editingStaff, category: e.target.value as StaffCategory})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                 >
                   {CATEGORIES.filter(cat => cat !== 'Manager' || isAdmin).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -908,7 +944,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="number" 
                   value={editingStaff.totalAllowance === undefined ? systemConfig.defaultAllowance : editingStaff.totalAllowance} 
                   onChange={e => setEditingStaff({...editingStaff, totalAllowance: parseInt(e.target.value) || 0})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                 />
               </div>
               <div>
@@ -917,7 +953,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   type="email" 
                   value={editingStaff.email || ''} 
                   onChange={e => setEditingStaff({...editingStaff, email: e.target.value})}
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. staff@example.com"
                 />
                 <p className="text-[10px] text-gray-500 mt-1">Used for approval notifications.</p>
@@ -928,7 +964,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   <select 
                     value={editingStaff.branchId} 
                     onChange={e => setEditingStaff({...editingStaff, branchId: e.target.value})}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   >
                     {branches.map(b => (
                       <option key={b.id} value={b.id}>{b.name}</option>
@@ -939,7 +975,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
               <button onClick={() => setEditingStaff(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveStaff} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Save Staff</button>
+              <button onClick={handleSaveStaff} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Staff</button>
             </div>
           </div>
         </div>
