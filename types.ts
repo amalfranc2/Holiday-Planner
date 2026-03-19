@@ -25,11 +25,19 @@ export interface HolidayRequest {
   status: 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn';
   notes?: string;
   createdAt: string; // Timestamp for priority logic
+  attachmentUrl?: string;
+  attachmentId?: string;
 }
 
 export interface SystemConfig {
   primeTimeMonths: number[]; // 0-11
   defaultAllowance: number;
+  heatmapThresholds: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+  };
 }
 
 export type UserRole = 'Manager' | 'HeadOffice';
@@ -44,6 +52,10 @@ export interface User {
   email?: string;
   receiveNotifications?: boolean;
   themeColor?: string;
+  defaultView?: 'Dashboard' | 'Yearly';
+  bubbleStyle?: 'classic' | 'arc';
+  showBubble?: boolean;
+  smoothScroll?: boolean;
 }
 
 export interface UserContextType {

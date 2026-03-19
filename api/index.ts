@@ -7,12 +7,61 @@ import { sql, db } from "@vercel/postgres";
 import path from "path";
 import { fileURLToPath } from "url";
 import { sendEmail, SmtpConfig } from "./email.js";
+import { google } from "googleapis";
+import multer from "multer";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
+
+// --- Google Drive Setup (Service Account) ---
+interface DriveConfig {
+  client_email: string;
+  private_key: string;
+  folder_id: string;
+}
+
+async function getDriveConfig(): Promise<DriveConfig | null> {
+  try {
+    const { rows } = await sql`SELECT client_email, private_key, folder_id FROM google_drive_config WHERE id = 1`;
+    return (rows[0] as DriveConfig) || null;
+  } catch (err) {
+    // Table might not exist yet during first run
+    return null;
+  }
+}
+
+async function getDriveClient() {
+  const config = await getDriveConfig();
+  const clientEmail = config?.client_email || process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = config?.private_key || process.env.GOOGLE_PRIVATE_KEY;
+
+  if (!clientEmail || !privateKey) {
+    return null;
+  }
+
+  try {
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: privateKey.replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/drive']
+    });
+    return google.drive({ version: 'v3', auth });
+  } catch (err) {
+    console.error("Failed to initialize Google Drive client:", err);
+    return null;
+  }
+}
+
+// Ensure uploads directory exists
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
+
+const upload = multer({ dest: 'uploads/' });
 
 // --- Database Initialization ---
 async function initDb() {
@@ -43,7 +92,9 @@ async function initDb() {
         end_date TEXT NOT NULL,
         status TEXT NOT NULL,
         notes TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        attachment_url TEXT,
+        attachment_id TEXT
       );
     `;
     await sql`
@@ -79,6 +130,15 @@ async function initDb() {
       );
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS google_drive_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        client_email TEXT NOT NULL,
+        private_key TEXT NOT NULL,
+        folder_id TEXT NOT NULL
+      );
+    `;
+
     // Seed initial admin if not exists
     const adminExists = await sql`SELECT * FROM users WHERE username = 'admin'`;
     if (adminExists.rowCount === 0) {
@@ -105,6 +165,8 @@ async function initDb() {
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT`;
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_notifications BOOLEAN DEFAULT FALSE`;
       await sql`ALTER TABLE smtp_config ADD COLUMN IF NOT EXISTS app_url TEXT NOT NULL DEFAULT ''`;
+      await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_url TEXT`;
+      await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_id TEXT`;
       console.log("Database migrations applied successfully");
     } catch (migErr) {
       console.warn("Migration warning (columns might already exist):", migErr);
@@ -245,7 +307,7 @@ app.get("/api/requests", async (req, res) => {
     if (!process.env.POSTGRES_URL) {
       return res.status(500).json({ error: "POSTGRES_URL is missing" });
     }
-    const { rows } = await sql`SELECT id, staff_id as "staffId", branch_id as "branchId", start_date as "startDate", end_date as "endDate", status, notes, created_at as "createdAt" FROM holiday_requests`;
+    const { rows } = await sql`SELECT id, staff_id as "staffId", branch_id as "branchId", start_date as "startDate", end_date as "endDate", status, notes, created_at as "createdAt", attachment_url as "attachmentUrl", attachment_id as "attachmentId" FROM holiday_requests`;
     res.json(rows);
   } catch (error: any) {
     console.error("Fetch requests error:", error.message);
@@ -267,8 +329,8 @@ app.post("/api/requests", async (req, res) => {
     await client.sql`BEGIN`;
     for (const r of uniqueRequests) {
       await client.sql`
-        INSERT INTO holiday_requests (id, staff_id, branch_id, start_date, end_date, status, notes, created_at) 
-        VALUES (${r.id}, ${r.staffId}, ${r.branchId}, ${r.startDate}, ${r.endDate}, ${r.status}, ${r.notes}, ${r.createdAt})
+        INSERT INTO holiday_requests (id, staff_id, branch_id, start_date, end_date, status, notes, created_at, attachment_url, attachment_id) 
+        VALUES (${r.id}, ${r.staffId}, ${r.branchId}, ${r.startDate}, ${r.endDate}, ${r.status}, ${r.notes}, ${r.createdAt}, ${r.attachmentUrl}, ${r.attachmentId})
         ON CONFLICT (id) DO UPDATE SET
           staff_id = EXCLUDED.staff_id,
           branch_id = EXCLUDED.branch_id,
@@ -276,7 +338,9 @@ app.post("/api/requests", async (req, res) => {
           end_date = EXCLUDED.end_date,
           status = EXCLUDED.status,
           notes = EXCLUDED.notes,
-          created_at = EXCLUDED.created_at
+          created_at = EXCLUDED.created_at,
+          attachment_url = EXCLUDED.attachment_url,
+          attachment_id = EXCLUDED.attachment_id
       `;
     }
 
@@ -289,14 +353,16 @@ app.post("/api/requests", async (req, res) => {
 
     await client.sql`COMMIT`;
 
-    uniqueRequests.forEach(r => {
+    const notificationPromises = uniqueRequests.map(async (r) => {
       const oldReq = oldRequestsMap.get(r.id);
       if (!oldReq) {
-        handleNewRequestNotification(r);
+        await handleNewRequestNotification(r);
       } else if (oldReq.status !== r.status && (r.status === 'Approved' || r.status === 'Rejected')) {
-        handleStatusChangeNotification(r);
+        await handleStatusChangeNotification(r);
       }
     });
+
+    await Promise.all(notificationPromises);
 
     res.json({ success: true });
   } catch (error) {
@@ -346,13 +412,15 @@ async function handleNewRequestNotification(request: any) {
       await sendEmail({
         to: user.email,
         subject: `New Holiday Request: ${staffName} (${branchName})`,
-        text: `${staffName} has submitted a new holiday request from ${request.startDate} to ${request.endDate}.\n\nPlease log in to the Holiday Planner to review it.`,
+        text: `${staffName} has submitted a new holiday request from ${request.startDate} to ${request.endDate}.\n\nPlease log in to the Holiday Planner to review it.\n\n---\nThis is an unattended inbox, please do not reply to this email.`,
         html: `
           <h3>New Holiday Request</h3>
           <p><strong>Staff:</strong> ${staffName}</p>
           <p><strong>Branch:</strong> ${branchName}</p>
           <p><strong>Dates:</strong> ${request.startDate} to ${request.endDate}</p>
           <p>Please log in to the <a href="${smtpConfig?.app_url || '#'}">Holiday Planner</a> to review this request.</p>
+          <hr/>
+          <p style="color: #666; font-size: 12px;">This is an unattended inbox, please do not reply to this email.</p>
         `,
         config: smtpConfig
       });
@@ -376,12 +444,14 @@ async function handleStatusChangeNotification(request: any) {
       await sendEmail({
         to: staff.email,
         subject: `Holiday Request ${request.status}`,
-        text: `Hi ${staff.name},\n\nYour holiday request for ${request.startDate} to ${request.endDate} has been ${request.status.toLowerCase()}.\n\nLog in to the Holiday Planner for more details.`,
+        text: `Hi ${staff.name},\n\nYour holiday request for ${request.startDate} to ${request.endDate} has been ${request.status.toLowerCase()}.\n\nLog in to the Holiday Planner for more details.\n\n---\nThis is an unattended inbox, please do not reply to this email.`,
         html: `
           <h3>Holiday Request Update</h3>
           <p>Hi ${staff.name},</p>
           <p>Your holiday request for <strong>${request.startDate} to ${request.endDate}</strong> has been <strong>${request.status.toLowerCase()}</strong>.</p>
           <p>Log in to the <a href="${smtpConfig?.app_url || '#'}">Holiday Planner</a> for more details.</p>
+          <hr/>
+          <p style="color: #666; font-size: 12px;">This is an unattended inbox, please do not reply to this email.</p>
         `,
         config: smtpConfig
       });
@@ -392,6 +462,130 @@ async function handleStatusChangeNotification(request: any) {
     console.error("Failed to send status change notification:", err);
   }
 }
+
+// --- Google Drive Auth Helper ---
+// (OAuth2 routes removed in favor of Service Account)
+
+// Google Drive Upload
+app.post("/api/upload", upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    
+    const staffName = req.body.staffName || "Staff";
+    const formattedName = staffName.trim().replace(/\s+/g, '-');
+
+    // Extract ID from URL if provided
+    const drive = await getDriveClient();
+    if (!drive) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(500).json({ error: "Google Drive client not configured. Please check your Drive settings in Config." });
+    }
+
+    const config = await getDriveConfig();
+    let folderId = config?.folder_id || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
+    
+    if (folderId.includes('/folders/')) {
+      folderId = folderId.split('/folders/')[1].split('?')[0];
+    }
+
+    if (!folderId) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: "Google Drive Folder ID is required. Please set it in the Config tab." });
+    }
+
+    // 1. Upload the file with the original name to get the file_id
+    const fileMetadata: any = {
+      name: req.file.originalname,
+      parents: [folderId]
+    };
+
+    const media = {
+      mimeType: req.file.mimetype,
+      body: fs.createReadStream(req.file.path)
+    };
+
+    const createResponse = await drive.files.create({
+      requestBody: fileMetadata,
+      media: media,
+      fields: 'id',
+      supportsAllDrives: true,
+    } as any);
+
+    const fileId = createResponse.data.id;
+    if (!fileId) {
+      throw new Error("Failed to retrieve file ID after upload");
+    }
+
+    // 2. Rename the file using a PATCH request to files.update
+    // Format: staff firstname-dd-mm-yy-hh-mm-ss
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timestamp = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear().toString().slice(-2)}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    
+    // Get file extension from original name
+    const ext = path.extname(req.file.originalname);
+    const newFileName = `${formattedName}-${timestamp}${ext}`;
+
+    const updateResponse = await drive.files.update({
+      fileId: fileId,
+      requestBody: {
+        name: newFileName
+      },
+      fields: 'id, webViewLink, name, mimeType',
+      supportsAllDrives: true,
+    } as any);
+
+    // 3. Check for no malformed meta data
+    if (!updateResponse.data.name || !updateResponse.data.webViewLink) {
+      throw new Error("Malformed metadata received from Google Drive after update");
+    }
+
+    // Delete local file after upload
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+    res.json({ 
+      id: updateResponse.data.id, 
+      webViewLink: updateResponse.data.webViewLink 
+    });
+  } catch (error: any) {
+    console.error("Upload error:", error.message);
+    // Clean up local file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: error.message || "Failed to upload to Google Drive" });
+  }
+});
+
+// Google Drive Delete
+app.post("/api/delete-file", async (req, res) => {
+  const { fileId } = req.body;
+  try {
+    if (!fileId) return res.status(400).json({ error: "File ID is required" });
+
+    const drive = await getDriveClient();
+    if (!drive) {
+      return res.status(500).json({ error: "Google Drive client not configured" });
+    }
+
+    await drive.files.update({
+      fileId: fileId,
+      requestBody: {
+        trashed: true
+      },
+      supportsAllDrives: true,
+    } as any);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error.code === 404 || (error.message && error.message.toLowerCase().includes('file not found'))) {
+      console.warn("File deleted or not found in Drive:", fileId);
+      return res.json({ success: true, message: "File deleted or not found" });
+    }
+    console.error("Delete file error:", error.message);
+    res.status(500).json({ error: error.message || "Failed to delete file in Google Drive" });
+  }
+});
 
 // Users
 app.get("/api/users", async (req, res) => {
@@ -460,6 +654,70 @@ app.get("/api/email-status", async (req, res) => {
       secure: config?.secure !== undefined ? config.secure : 'N/A',
     }
   });
+});
+
+app.get('/api/drive-status', async (req, res) => {
+  const config = await getDriveConfig();
+  const configured = !!(config?.client_email && config?.private_key) || !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY);
+  const folderIdSet = !!config?.folder_id || !!process.env.GOOGLE_DRIVE_FOLDER_ID;
+  let verified = false;
+  let error = null;
+
+  if (configured && folderIdSet) {
+    try {
+      const drive = await getDriveClient();
+      if (!drive) throw new Error("Could not initialize Drive client");
+
+      let folderId = config?.folder_id || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
+      if (folderId.includes('/folders/')) {
+        folderId = folderId.split('/folders/')[1].split('?')[0];
+      }
+      
+      await drive.files.list({
+        q: `'${folderId}' in parents`,
+        pageSize: 1,
+        fields: 'files(id, name)'
+      });
+      verified = true;
+    } catch (err: any) {
+      console.error("Drive verification failed:", err.message);
+      error = err.message;
+    }
+  }
+
+  res.json({
+    configured,
+    folderIdSet,
+    verified,
+    error,
+    serviceAccountEmail: config?.client_email || process.env.GOOGLE_CLIENT_EMAIL
+  });
+});
+
+app.get('/api/drive-config', async (req, res) => {
+  try {
+    const config = await getDriveConfig();
+    res.json(config || {});
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/drive-config', async (req, res) => {
+  try {
+    const { client_email, private_key, folder_id } = req.body;
+    await sql`
+      INSERT INTO google_drive_config (id, client_email, private_key, folder_id)
+      VALUES (1, ${client_email}, ${private_key}, ${folder_id})
+      ON CONFLICT (id) DO UPDATE SET
+        client_email = EXCLUDED.client_email,
+        private_key = EXCLUDED.private_key,
+        folder_id = EXCLUDED.folder_id
+    `;
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/smtp-config", async (req, res) => {
@@ -564,6 +822,14 @@ async function setupVite() {
 if (!process.env.VERCEL) {
   setupVite();
 }
+
+// Global error handler to ensure JSON responses
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global error handler:", err);
+  res.status(err.status || 500).json({
+    error: err.message || "An unexpected error occurred"
+  });
+});
 
 // Export for Vercel
 export default app;

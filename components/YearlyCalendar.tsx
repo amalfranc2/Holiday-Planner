@@ -19,6 +19,8 @@ interface YearlyCalendarProps {
   selectedCategories: StaffCategory[];
   selectedYear: number;
   isShrunk?: boolean;
+  viewMode: 'Calendar' | 'StaffGrid';
+  onViewModeChange: (mode: 'Calendar' | 'StaffGrid') => void;
 }
 
 const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
@@ -36,9 +38,10 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
   onRequestClick,
   selectedCategories,
   selectedYear,
-  isShrunk
+  isShrunk,
+  viewMode,
+  onViewModeChange
 }) => {
-  const [viewMode, setViewMode] = useState<'Calendar' | 'StaffGrid'>('Calendar');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [activeMonth, setActiveMonth] = useState(new Date().getMonth());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
@@ -112,12 +115,12 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
         if (root) {
           root.scrollTo({
             top: scrollTarget,
-            behavior: 'smooth'
+            behavior: currentUser.smoothScroll !== false ? 'smooth' : 'auto'
           });
         } else {
           window.scrollTo({
             top: scrollTarget,
-            behavior: 'smooth'
+            behavior: currentUser.smoothScroll !== false ? 'smooth' : 'auto'
           });
         }
       }
@@ -205,19 +208,21 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
       return dailyDensity[dStr] || { approved: 0, pending: 0 };
     });
 
+    const thresholds = systemConfig.heatmapThresholds || { low: 10, medium: 20, high: 30, critical: 45 };
+
     const getRiskColorClass = (percentage: number) => {
-      if (percentage < 10) return 'bg-emerald-100 border-emerald-200';
-      if (percentage <= 20) return 'bg-amber-100 border-amber-200';
-      if (percentage <= 30) return 'bg-orange-200 border-orange-300';
-      if (percentage <= 45) return 'bg-rose-200 border-rose-300';
+      if (percentage < thresholds.low) return 'bg-emerald-100 border-emerald-200';
+      if (percentage <= thresholds.medium) return 'bg-amber-100 border-amber-200';
+      if (percentage <= thresholds.high) return 'bg-orange-200 border-orange-300';
+      if (percentage <= thresholds.critical) return 'bg-rose-200 border-rose-300';
       return 'bg-red-600 border-red-700';
     };
 
     const getApprovedColorClass = (percentage: number) => {
-      if (percentage < 10) return 'bg-emerald-100 border-emerald-200';
-      if (percentage <= 20) return 'bg-rose-100 border-rose-200';
-      if (percentage <= 30) return 'bg-rose-300 border-rose-400';
-      if (percentage <= 45) return 'bg-rose-500 border-rose-600';
+      if (percentage < thresholds.low) return 'bg-emerald-100 border-emerald-200';
+      if (percentage <= thresholds.medium) return 'bg-rose-100 border-rose-200';
+      if (percentage <= thresholds.high) return 'bg-rose-300 border-rose-400';
+      if (percentage <= thresholds.critical) return 'bg-rose-500 border-rose-600';
       return 'bg-rose-900 border-rose-950';
     };
 
@@ -445,17 +450,19 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
                     let bgColor = 'bg-white';
                     let textColor = 'text-gray-300';
                     
+                    const thresholds = systemConfig.heatmapThresholds || { low: 10, medium: 20, high: 30, critical: 45 };
+                    
                     if (staffOffCount > 0) {
-                      if (percentage < 10) {
+                      if (percentage < thresholds.low) {
                         bgColor = 'bg-emerald-100';
                         textColor = 'text-emerald-700';
-                      } else if (percentage <= 20) {
+                      } else if (percentage <= thresholds.medium) {
                         bgColor = 'bg-amber-100';
                         textColor = 'text-amber-700';
-                      } else if (percentage <= 30) {
+                      } else if (percentage <= thresholds.high) {
                         bgColor = 'bg-orange-200';
                         textColor = 'text-orange-800';
-                      } else if (percentage <= 45) {
+                      } else if (percentage <= thresholds.critical) {
                         bgColor = 'bg-rose-200';
                         textColor = 'text-rose-800';
                       } else {
@@ -475,7 +482,7 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
                         <span className={`text-[10px] font-black ${textColor}`}>
                           {staffOffCount > 0 ? staffOffCount : '-'}
                         </span>
-                        {percentage > 45 && (
+                        {percentage > thresholds.critical && (
                           <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-white rounded-full m-0.5 animate-pulse"></div>
                         )}
                       </td>
@@ -542,13 +549,13 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
           </h3>
           <div className="flex bg-gray-200 p-1 rounded-lg">
             <button 
-              onClick={() => setViewMode('Calendar')}
+              onClick={() => onViewModeChange('Calendar')}
               className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewMode === 'Calendar' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
             >
               Calendar
             </button>
             <button 
-              onClick={() => setViewMode('StaffGrid')}
+              onClick={() => onViewModeChange('StaffGrid')}
               className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${viewMode === 'StaffGrid' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
             >
               Staff Grid

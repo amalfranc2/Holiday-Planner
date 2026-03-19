@@ -407,6 +407,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                         <th className="pb-2 font-bold">End Date</th>
                         <th className="pb-2 font-bold text-center">Days</th>
                         <th className="pb-2 font-bold">Status</th>
+                        <th className="pb-2 font-bold text-center">Doc</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -433,6 +434,21 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                               }`}>
                                 {req.status}
                               </span>
+                            </td>
+                            <td className="py-3 text-center">
+                              {req.attachmentUrl ? (
+                                <a 
+                                  href={req.attachmentUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary-600 hover:text-primary-700 transition-colors"
+                                  title="View Attachment"
+                                >
+                                  <i className="fa-solid fa-paperclip"></i>
+                                </a>
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -502,6 +518,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       <th className="pb-2 font-bold text-center">Days</th>
                       <th className="pb-2 font-bold">Status</th>
                       <th className="pb-2 font-bold">Notes</th>
+                      <th className="pb-2 font-bold text-center">Doc</th>
                       <th className="pb-2 font-bold text-right">Created</th>
                     </tr>
                   </thead>
@@ -530,6 +547,21 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                           </td>
                           <td className="py-3 text-gray-500 max-w-xs truncate italic">
                             {req.notes || '-'}
+                          </td>
+                          <td className="py-3 text-center">
+                            {req.attachmentUrl ? (
+                              <a 
+                                href={req.attachmentUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-primary-600 hover:text-primary-700 transition-colors"
+                                title="View Attachment"
+                              >
+                                <i className="fa-solid fa-paperclip"></i>
+                              </a>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
                           </td>
                           <td className="py-3 text-gray-400 text-xs text-right">
                             {format(parseISO(req.createdAt), 'PP')}

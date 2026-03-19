@@ -28,8 +28,14 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
     endDate: '',
     notes: '',
     status: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn',
-    duration: 1
+    duration: 1,
+    attachmentUrl: '',
+    attachmentId: ''
   });
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const calculateDays = (start: string, end: string) => {
     if (!start || !end) return 0;
@@ -54,7 +60,9 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
         endDate: editingRequest.endDate,
         notes: editingRequest.notes || '',
         status: editingRequest.status,
-        duration: calculateDays(editingRequest.startDate, editingRequest.endDate)
+        duration: calculateDays(editingRequest.startDate, editingRequest.endDate),
+        attachmentUrl: editingRequest.attachmentUrl || '',
+        attachmentId: editingRequest.attachmentId || ''
       });
     } else {
       const defaultDate = (initialDate || new Date()).toISOString().split('T')[0];
@@ -64,10 +72,20 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
         endDate: defaultDate,
         notes: '',
         status: 'Pending',
-        duration: 1
+        duration: 1,
+        attachmentUrl: '',
+        attachmentId: ''
       });
     }
   }, [editingRequest, initialDate, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   if (!isOpen) return null;
 
@@ -139,6 +157,119 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
     });
   };
 
+  const deleteFileFromDrive = async (fileId: string) => {
+    try {
+      const res = await fetch('/api/delete-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId })
+      });
+      if (!res.ok) {
+        console.error("Failed to delete file in Drive");
+      }
+    } catch (err) {
+      console.error("Error deleting file in Drive:", err);
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    const oldAttachmentId = formData.attachmentId;
+    setIsUploading(true);
+    const uploadData = new FormData();
+    uploadData.append('file', file);
+    if (selectedStaff) {
+      uploadData.append('staffName', selectedStaff.name);
+    }
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: uploadData
+      });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = "Upload failed";
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch (e) {
+          errorMessage = `Server error (${res.status}): ${errorText.substring(0, 100)}...`;
+        }
+        
+        if (errorMessage.includes('invalid_grant')) {
+          errorMessage = "Google Drive connection has expired. Please ask an administrator to re-authorize Google Drive in Settings > Config.";
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      if (data.webViewLink) {
+        // Clean up old file if it exists
+        if (oldAttachmentId) {
+          deleteFileFromDrive(oldAttachmentId);
+        }
+
+        setFormData(prev => ({ 
+          ...prev, 
+          attachmentUrl: data.webViewLink,
+          attachmentId: data.id
+        }));
+      }
+    } catch (err: any) {
+      console.error("Upload failed:", err);
+      alert(`Upload failed:\n${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveAttachment = async () => {
+    if (formData.attachmentId) {
+      setIsDeleting(true);
+      await deleteFileFromDrive(formData.attachmentId);
+      setIsDeleting(false);
+    }
+    setFormData(prev => ({ ...prev, attachmentUrl: '', attachmentId: '' }));
+  };
+
+  const startCamera = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setStream(s);
+      setShowCamera(true);
+    } catch (err) {
+      console.error("Camera access failed:", err);
+      alert("Could not access camera.");
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = document.querySelector('video');
+    const canvas = document.createElement('canvas');
+    if (video) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')?.drawImage(video, 0, 0);
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+          await handleFileUpload(file);
+          stopCamera();
+        }
+      }, 'image/jpeg');
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setShowCamera(false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.staffId || !formData.startDate || !formData.endDate) return;
@@ -149,7 +280,9 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       notes: formData.notes,
       status: formData.status,
       branchId: effectiveBranchId,
-      id: editingRequest?.id
+      id: editingRequest?.id,
+      attachmentUrl: formData.attachmentUrl,
+      attachmentId: formData.attachmentId
     });
     onClose();
   };
@@ -163,6 +296,19 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       ...editingRequest,
       status: 'Withdrawn'
     });
+    onClose();
+  };
+
+  const handleDeleteRequest = async () => {
+    if (!editingRequest) return;
+    
+    if (formData.attachmentId) {
+      setIsDeleting(true);
+      await deleteFileFromDrive(formData.attachmentId);
+      setIsDeleting(false);
+    }
+    
+    onDelete(editingRequest.id);
     onClose();
   };
 
@@ -323,6 +469,92 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Application Attachment</label>
+            <div className="space-y-3">
+              {formData.attachmentUrl ? (
+                <div className="flex items-center justify-between p-3 bg-primary-50 rounded-xl border border-primary-100">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <i className={`fa-solid ${isDeleting ? 'fa-spinner fa-spin' : 'fa-file-image'} text-primary-600`}></i>
+                    <span className="text-xs font-medium text-primary-700 truncate">Application Attached</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <a 
+                      href={formData.attachmentUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-bold text-primary-600 hover:underline"
+                    >
+                      View
+                    </a>
+                    {!isReadOnly && (
+                      <button 
+                        type="button"
+                        disabled={isDeleting}
+                        onClick={handleRemoveAttachment}
+                        className="text-[10px] font-bold text-red-600 hover:underline disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-200 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-all cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <input 
+                      type="file" 
+                      accept="image/*,application/pdf" 
+                      className="hidden" 
+                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                    />
+                    <i className={`fa-solid ${isUploading ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'} text-gray-400 mb-1`}></i>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Upload File</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    disabled={isUploading}
+                    className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-200 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-all"
+                  >
+                    <i className="fa-solid fa-camera text-gray-400 mb-1"></i>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Take Photo</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {showCamera && (
+            <div className="fixed inset-0 z-[110] bg-black flex flex-col items-center justify-center p-4">
+              <div className="relative w-full max-w-md aspect-[3/4] bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+                <video 
+                  autoPlay 
+                  playsInline 
+                  ref={(el) => { if (el && stream) el.srcObject = stream; }}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-8">
+                  <button 
+                    type="button"
+                    onClick={stopCamera}
+                    className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/30 transition-all"
+                  >
+                    <i className="fa-solid fa-xmark text-xl"></i>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={capturePhoto}
+                    className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-xl active:scale-90 transition-all"
+                  >
+                    <div className="w-12 h-12 rounded-full border-4 border-gray-200"></div>
+                  </button>
+                </div>
+              </div>
+              <p className="mt-4 text-white/60 text-xs font-medium">Align the application form within the frame</p>
+            </div>
+          )}
+
           {selectedStaff && (
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
               <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Application History</h4>
@@ -386,10 +618,11 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
             {isHO && editingRequest && (
               <button
                 type="button"
-                onClick={() => { onDelete(editingRequest.id); onClose(); }}
-                className="w-full px-4 py-2.5 text-red-600 font-semibold hover:bg-red-50 rounded-lg transition-all"
+                disabled={isDeleting}
+                onClick={handleDeleteRequest}
+                className="w-full px-4 py-2.5 text-red-600 font-semibold hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
               >
-                Delete Permanently
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             )}
           </div>

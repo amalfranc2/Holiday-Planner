@@ -17,18 +17,19 @@ interface MainViewProps {
   onUpdateRequest: (req: Partial<HolidayRequest>) => void;
   onDeleteRequest: (id: string) => void;
   isShrunk?: boolean;
+  viewType: 'Dashboard' | 'Yearly';
 }
 
 const MainView: React.FC<MainViewProps> = ({ 
-  role, currentUser, currentBranchId, requests, branches, staff, systemConfig, onAddRequest, onUpdateRequest, onDeleteRequest, isShrunk 
+  role, currentUser, currentBranchId, requests, branches, staff, systemConfig, onAddRequest, onUpdateRequest, onDeleteRequest, isShrunk, viewType 
 }) => {
-  const [viewType, setViewType] = useState<'Dashboard' | 'Yearly' | 'CrossBranch'>('Dashboard');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<HolidayRequest | undefined>(undefined);
   const [activeDate, setActiveDate] = useState<Date | undefined>(undefined);
   const [selectedCategories, setSelectedCategories] = useState<StaffCategory[]>(['Kitchen', 'Counter', 'Manager']);
+  const [viewMode, setViewMode] = useState<'Calendar' | 'StaffGrid'>('Calendar');
   const [dashboardFilter, setDashboardFilter] = useState<'year' | 'upcoming'>('year');
 
   const daysInMonth = (month: number, year: number) => new Date(year, month + 1, 0).getDate();
@@ -166,7 +167,14 @@ const MainView: React.FC<MainViewProps> = ({
                             : 'bg-amber-100 border-amber-200 text-amber-800 opacity-80'
                         } ${canEdit ? 'hover:scale-105 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
                       >
-                        <span className="font-bold">[{sMember?.category[0]}]</span> {sMember?.name}
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="truncate">
+                            <span className="font-bold">[{sMember?.category[0]}]</span> {sMember?.name}
+                          </span>
+                          {r.attachmentUrl && (
+                            <i className="fa-solid fa-paperclip text-[8px] opacity-60"></i>
+                          )}
+                        </div>
                         {currentBranchId === 'all' && <div className="text-[7px] opacity-70">{branch?.name}</div>}
                       </div>
                     );
@@ -186,29 +194,6 @@ const MainView: React.FC<MainViewProps> = ({
       <div className="py-2 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 sm:p-3 rounded-xl shadow-sm border border-gray-100">
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <div className="flex bg-gray-100 rounded-lg p-0.5">
-              <button 
-                onClick={() => setViewType('Dashboard')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewType === 'Dashboard' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Dashboard
-              </button>
-              <button 
-                onClick={() => setViewType('Yearly')}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewType === 'Yearly' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Planner
-              </button>
-              {isHO && (
-                <button 
-                  onClick={() => setViewType('CrossBranch')}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewType === 'CrossBranch' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Heatmap
-                </button>
-              )}
-            </div>
-
             {viewType !== 'Dashboard' && (
               <>
                 <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
@@ -254,87 +239,207 @@ const MainView: React.FC<MainViewProps> = ({
         </div>
       </div>
 
-      {/* Persistent Expandable Floating Capsule */}
-      {viewType !== 'Dashboard' && (
-        <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-2">
-          {/* Expanded Capsule Content */}
-          <div className={`
-            bg-white/95 backdrop-blur-md shadow-2xl border border-primary-100 rounded-2xl 
-            flex flex-col items-center gap-3 p-3 transition-all duration-500 origin-bottom-right
-            ${isCapsuleExpanded ? 'scale-100 opacity-100 translate-y-0' : 'scale-0 opacity-0 translate-y-10 pointer-events-none'}
-          `}>
-            {/* Year Selector */}
-            <div className="flex items-center gap-2 bg-gray-50 px-2 py-1.5 rounded-xl border border-gray-100">
+      {/* Persistent Quick Action Menu */}
+      {viewType !== 'Dashboard' && currentUser.showBubble !== false && (
+        <div className="fixed bottom-6 right-6 z-[100]">
+          {(currentUser.bubbleStyle || 'arc') === 'classic' ? (
+            <div className="flex flex-col items-end gap-2">
+              {/* Classic View Capsules (Visible when expanded) */}
+              <div className={`flex flex-col items-end gap-2 transition-all duration-300 ${isCapsuleExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+                {/* Row 1: Year Navigation Capsule */}
+                <div className="flex items-center bg-white rounded-full shadow-lg border border-gray-100 p-1 gap-1 h-10">
+                  <button 
+                    onClick={() => navigateYear(-1)} 
+                    className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors"
+                    title="Previous Year"
+                  >
+                    <i className="fa-solid fa-chevron-left text-[10px]"></i>
+                  </button>
+                  <span className="px-2 text-xs font-black text-primary-600 min-w-[40px] text-center">{selectedYear}</span>
+                  <button 
+                    onClick={() => navigateYear(1)} 
+                    className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors"
+                    title="Next Year"
+                  >
+                    <i className="fa-solid fa-chevron-right text-[10px]"></i>
+                  </button>
+                </div>
+
+                {/* Row 2: Category Filter Buttons */}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => toggleCategory('Kitchen')} 
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Kitchen') ? 'bg-orange-500 text-white' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
+                    title="Kitchen"
+                  >
+                    K
+                  </button>
+                  <button 
+                    onClick={() => toggleCategory('Counter')} 
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Counter') ? 'bg-blue-500 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
+                    title="Counter"
+                  >
+                    C
+                  </button>
+                  <button 
+                    onClick={() => toggleCategory('Manager')} 
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Manager') ? 'bg-purple-500 text-white' : 'bg-white text-purple-600 hover:bg-purple-50'}`}
+                    title="Manager"
+                  >
+                    M
+                  </button>
+                </div>
+
+                {/* Row 3: View Mode & Top Capsule */}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setViewMode(viewMode === 'Calendar' ? 'StaffGrid' : 'Calendar')}
+                    className="bg-primary-600 text-white h-10 px-4 rounded-full shadow-lg flex items-center gap-2 text-xs font-bold hover:bg-primary-700 transition-colors"
+                  >
+                    <i className={`fa-solid ${viewMode === 'Calendar' ? 'fa-table-cells' : 'fa-calendar-days'}`}></i>
+                    {viewMode === 'Calendar' ? 'Grid' : 'Planner'}
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const scrollTargets = [window, document.documentElement, document.body, document.querySelector('main'), document.querySelector('#root')];
+                      scrollTargets.forEach(target => {
+                        if (target && 'scrollTo' in target) (target as any).scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                        if (target && 'scrollTop' in target) (target as any).scrollTop = 0;
+                      });
+                    }}
+                    className="bg-gray-800 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:bg-black transition-colors"
+                    title="Back to Top"
+                  >
+                    <i className="fa-solid fa-arrow-up"></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Toggle Button */}
               <button 
-                onClick={() => navigateYear(-1)} 
-                className="w-7 h-7 flex items-center justify-center hover:bg-white hover:shadow-sm rounded-lg transition-all cursor-pointer text-gray-600"
+                onClick={() => setIsCapsuleExpanded(!isCapsuleExpanded)}
+                className={`
+                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 cursor-pointer z-[101]
+                  ${isCapsuleExpanded ? 'bg-gray-800 text-white rotate-45' : 'bg-primary-600 text-white rotate-0'}
+                `}
               >
-                <i className="fa-solid fa-chevron-left text-[10px]"></i>
-              </button>
-              <span className="text-xs font-black text-primary-600 min-w-[35px] text-center">{selectedYear}</span>
-              <button 
-                onClick={() => navigateYear(1)} 
-                className="w-7 h-7 flex items-center justify-center hover:bg-white hover:shadow-sm rounded-lg transition-all cursor-pointer text-gray-600"
-              >
-                <i className="fa-solid fa-chevron-right text-[10px]"></i>
+                <i className={`fa-solid ${isCapsuleExpanded ? 'fa-xmark' : 'fa-hand-pointer'}`}></i>
+                {!isCapsuleExpanded && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-primary-500 border-2 border-white"></span>
+                  </span>
+                )}
               </button>
             </div>
+          ) : (
+            <div className="flex flex-col items-end gap-2">
+              {/* Action Buttons (Arc Style) */}
+              <div className={`relative w-12 h-12 transition-all duration-500 ${isCapsuleExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                {[
+                  { 
+                    icon: 'fa-chevron-left', 
+                    onClick: () => navigateYear(-1), 
+                    title: 'Previous Year',
+                    angle: 135,
+                    color: 'bg-white text-gray-600'
+                  },
+                  { 
+                    icon: 'fa-chevron-right', 
+                    onClick: () => navigateYear(1), 
+                    title: 'Next Year',
+                    angle: 157.5,
+                    color: 'bg-white text-gray-600'
+                  },
+                  { 
+                    icon: viewMode === 'Calendar' ? 'fa-table-cells' : 'fa-calendar-days', 
+                    onClick: () => setViewMode(viewMode === 'Calendar' ? 'StaffGrid' : 'Calendar'), 
+                    title: viewMode === 'Calendar' ? 'Staff Grid' : 'Yearly Planner',
+                    angle: 180,
+                    color: 'bg-primary-600 text-white'
+                  },
+                  { 
+                    label: 'K', 
+                    onClick: () => toggleCategory('Kitchen'), 
+                    title: 'Kitchen',
+                    angle: 202.5,
+                    color: selectedCategories.includes('Kitchen') ? 'bg-orange-500 text-white' : 'bg-white text-orange-600'
+                  },
+                  { 
+                    label: 'C', 
+                    onClick: () => toggleCategory('Counter'), 
+                    title: 'Counter',
+                    angle: 225,
+                    color: selectedCategories.includes('Counter') ? 'bg-blue-500 text-white' : 'bg-white text-blue-600'
+                  },
+                  { 
+                    label: 'M', 
+                    onClick: () => toggleCategory('Manager'), 
+                    title: 'Manager',
+                    angle: 247.5,
+                    color: selectedCategories.includes('Manager') ? 'bg-purple-500 text-white' : 'bg-white text-purple-600'
+                  },
+                  { 
+                    icon: 'fa-arrow-up', 
+                    onClick: () => {
+                      const scrollTargets = [window, document.documentElement, document.body, document.querySelector('main'), document.querySelector('#root')];
+                      scrollTargets.forEach(target => {
+                        if (target && 'scrollTo' in target) (target as any).scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                        if (target && 'scrollTop' in target) (target as any).scrollTop = 0;
+                      });
+                      setIsCapsuleExpanded(false);
+                    }, 
+                    title: 'Back to Top',
+                    angle: 270,
+                    color: 'bg-gray-800 text-white'
+                  }
+                ].map((btn, idx) => {
+                  const radius = 90;
+                  const angleRad = (btn.angle * Math.PI) / 180;
+                  const x = Math.cos(angleRad) * radius;
+                  const y = Math.sin(angleRad) * radius;
+                  
+                  return (
+                    <button
+                      key={idx}
+                      onClick={btn.onClick}
+                      title={btn.title}
+                      className={`
+                        absolute w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-xs font-black transition-all duration-500 border border-gray-100
+                        ${btn.color} hover:scale-110 active:scale-95 cursor-pointer
+                      `}
+                      style={{
+                        transform: isCapsuleExpanded 
+                          ? `translate(${x}px, ${y}px) scale(1)` 
+                          : `translate(0, 0) scale(0)`,
+                        opacity: isCapsuleExpanded ? 1 : 0,
+                        zIndex: 100 - idx
+                      }}
+                    >
+                      {btn.icon ? <i className={`fa-solid ${btn.icon}`}></i> : btn.label}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="w-full h-px bg-gray-100"></div>
-
-            {/* KCM Toggles */}
-            <div className="flex items-center gap-2">
-              {(['Kitchen', 'Counter', 'Manager'] as StaffCategory[]).map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => toggleCategory(cat)}
-                  className={`
-                    w-8 h-8 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center justify-center
-                    ${selectedCategories.includes(cat) 
-                      ? 'bg-primary-600 text-white shadow-sm' 
-                      : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}
-                  `}
-                  title={cat}
-                >
-                  {cat[0]}
-                </button>
-              ))}
+              {/* Small Bubble (Toggle) */}
+              <button 
+                onClick={() => setIsCapsuleExpanded(!isCapsuleExpanded)}
+                className={`
+                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 active:scale-90 cursor-pointer z-[101]
+                  ${isCapsuleExpanded ? 'bg-gray-800 text-white rotate-45' : 'bg-primary-600 text-white rotate-0'}
+                `}
+              >
+                <i className={`fa-solid ${isCapsuleExpanded ? 'fa-xmark' : 'fa-hand-pointer'}`}></i>
+                {!isCapsuleExpanded && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-primary-500 border-2 border-white"></span>
+                  </span>
+                )}
+              </button>
             </div>
-
-            <div className="w-full h-px bg-gray-100"></div>
-
-            {/* Back to Top */}
-            <button 
-              onClick={() => { 
-                const scrollTargets = [window, document.documentElement, document.body, document.querySelector('main'), document.querySelector('#root')];
-                scrollTargets.forEach(target => {
-                  if (target && 'scrollTo' in target) (target as any).scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                  if (target && 'scrollTop' in target) (target as any).scrollTop = 0;
-                });
-                setIsCapsuleExpanded(false);
-              }}
-              className="w-full px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all cursor-pointer text-center"
-            >
-              <i className="fa-solid fa-arrow-up mr-1"></i>
-              Top
-            </button>
-          </div>
-
-          {/* Small Bubble (Toggle) - Reduced size to ~75% (10.5/14) */}
-          <button 
-            onClick={() => setIsCapsuleExpanded(!isCapsuleExpanded)}
-            className={`
-              w-10 h-10 rounded-full shadow-2xl flex items-center justify-center text-lg transition-all duration-300 active:scale-90 cursor-pointer
-              ${isCapsuleExpanded ? 'bg-gray-800 text-white rotate-45' : 'bg-primary-600 text-white rotate-0'}
-            `}
-          >
-            <i className={`fa-solid ${isCapsuleExpanded ? 'fa-xmark' : 'fa-calendar-days'}`}></i>
-            {!isCapsuleExpanded && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center animate-bounce">
-                !
-              </span>
-            )}
-          </button>
+          )}
         </div>
       )}
 
@@ -442,6 +547,9 @@ const MainView: React.FC<MainViewProps> = ({
                           <div>
                             <div className="font-bold text-gray-800 flex items-center gap-2">
                               {sMember?.name}
+                              {r.attachmentUrl && (
+                                <i className="fa-solid fa-paperclip text-[10px] text-gray-400" title="Has attachment"></i>
+                              )}
                               <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">
                                 {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
                               </span>
@@ -508,6 +616,9 @@ const MainView: React.FC<MainViewProps> = ({
                           <div>
                             <div className="font-bold text-gray-800 flex items-center gap-2">
                               {sMember?.name}
+                              {r.attachmentUrl && (
+                                <i className="fa-solid fa-paperclip text-[10px] text-gray-400" title="Has attachment"></i>
+                              )}
                               <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
                                 {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
                               </span>
@@ -539,7 +650,7 @@ const MainView: React.FC<MainViewProps> = ({
             </div>
           </div>
         </div>
-      ) : viewType === 'Yearly' ? (
+      ) : (
         <YearlyCalendar 
           role={role}
           currentUser={currentUser}
@@ -556,96 +667,9 @@ const MainView: React.FC<MainViewProps> = ({
           selectedCategories={selectedCategories}
           selectedYear={selectedYear}
           isShrunk={isShrunk}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
-      ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="text-lg font-bold text-gray-800">Overlap Intelligence Map</h3>
-            <div className="text-xs text-gray-500">Visualizing total staff off per category across all {branches.length} branches</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="p-4 text-xs font-bold text-gray-500 uppercase border-b border-gray-100 sticky left-0 bg-gray-50 z-20">Category</th>
-                  {(() => {
-                    const days = daysInMonth(currentDate.getMonth(), currentDate.getFullYear());
-                    return (
-                      <th 
-                        colSpan={days} 
-                        className="p-2 text-center text-[10px] font-bold text-gray-600 border-b border-gray-100 border-r bg-gray-100/50 uppercase tracking-wider"
-                      >
-                        {getMonthName(currentDate)} {getYear(currentDate)}
-                      </th>
-                    );
-                  })()}
-                </tr>
-                <tr className="bg-white">
-                  <th className="p-4 border-b border-gray-100 sticky left-0 bg-white z-20"></th>
-                  {(() => {
-                    const days = daysInMonth(currentDate.getMonth(), currentDate.getFullYear());
-                    return Array.from({ length: days }).map((_, dIdx) => (
-                      <th key={dIdx} className="p-2 text-center text-[10px] font-bold text-gray-400 border-b border-gray-100 min-w-[35px] border-r">
-                        {dIdx + 1}
-                      </th>
-                    ));
-                  })()}
-                </tr>
-              </thead>
-              <tbody>
-                {CATEGORIES.map(cat => (
-                  <tr key={cat} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-4 text-sm font-bold text-gray-700 border-b border-gray-100 sticky left-0 bg-white z-10 shadow-sm">{cat}</td>
-                    {(() => {
-                      const days = daysInMonth(currentDate.getMonth(), currentDate.getFullYear());
-                      return Array.from({ length: days }).map((_, dayIdx) => {
-                        const day = dayIdx + 1;
-                        const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-                        const dateReqs = getRequestsForDate(date);
-                        const count = dateReqs.filter(r => {
-                          const s = staff.find(st => st.id === r.staffId);
-                          return s?.category === cat;
-                        }).length;
-                        
-                        // Calculate heat intensity
-                        let bgColor = 'bg-white';
-                        let textColor = 'text-gray-400';
-                        if (count > 0) {
-                          bgColor = 'bg-red-50';
-                          textColor = 'text-red-600';
-                        }
-                        if (count > 1) {
-                          bgColor = 'bg-red-100';
-                          textColor = 'text-red-700';
-                        }
-                        if (count > 2) {
-                          bgColor = 'bg-red-200';
-                          textColor = 'text-red-800';
-                        }
-                        if (count > 3) {
-                          bgColor = 'bg-red-400 animate-pulse';
-                          textColor = 'text-white';
-                        }
-
-                        const isToday = date.toDateString() === new Date().toDateString();
-
-                        return (
-                          <td 
-                            key={day} 
-                            onClick={() => setActiveDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day))}
-                            className={`p-2 text-center text-xs font-bold border-b border-gray-100 border-r cursor-pointer transition-colors ${bgColor} ${textColor} ${activeDate?.toDateString() === date.toDateString() ? 'ring-2 ring-primary-500 ring-inset' : ''} ${isToday ? 'bg-primary-50/30' : ''}`}
-                          >
-                            {count > 0 ? count : '-'}
-                          </td>
-                        );
-                      });
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
       <HolidayModal 

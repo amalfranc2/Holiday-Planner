@@ -6,11 +6,12 @@ import SettingsView from './components/SettingsView';
 import LoginView from './components/LoginView';
 import Reports from './components/Reports';
 import { UserRole, HolidayRequest, Branch, Staff, User, SystemConfig } from './types';
-import { BRANCHES as INITIAL_BRANCHES, MOCK_STAFF as INITIAL_STAFF, THEMES } from './constants';
+import { BRANCHES as INITIAL_BRANCHES, MOCK_STAFF as INITIAL_STAFF, THEMES, DEFAULT_HEATMAP_THRESHOLDS } from './constants';
 
 const INITIAL_CONFIG: SystemConfig = {
   primeTimeMonths: [6, 7, 11], // July, August, December
-  defaultAllowance: 28
+  defaultAllowance: 28,
+  heatmapThresholds: DEFAULT_HEATMAP_THRESHOLDS
 };
 
 const INITIAL_ADMIN: User = {
@@ -18,12 +19,15 @@ const INITIAL_ADMIN: User = {
   username: 'admin',
   password: 'password123',
   role: 'HeadOffice',
-  name: 'Head Office Admin'
+  name: 'Head Office Admin',
+  defaultView: 'Dashboard',
+  bubbleStyle: 'arc'
 };
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<'Calendar' | 'Settings' | 'Reports'>('Calendar');
+  const [viewType, setViewType] = useState<'Dashboard' | 'Yearly'>('Dashboard');
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false); // Safety lock
   const [dbError, setDbError] = useState<string | null>(null);
@@ -125,6 +129,7 @@ const App: React.FC = () => {
         if (savedSession) {
           const sessionUser = JSON.parse(savedSession);
           setCurrentUser(sessionUser);
+          setViewType(sessionUser.defaultView || 'Dashboard');
           if (sessionUser.role === 'HeadOffice') {
             setCurrentBranchId('all');
           } else if (sessionUser.role === 'Manager' && sessionUser.branchId) {
@@ -180,6 +185,7 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
+    setViewType(user.defaultView || 'Dashboard');
     localStorage.setItem('holiday_session', JSON.stringify(user));
     if (user.role === 'HeadOffice') {
       setCurrentBranchId('all');
@@ -279,6 +285,8 @@ const App: React.FC = () => {
       branches={branches}
       currentView={currentView}
       onViewChange={setCurrentView}
+      viewType={viewType}
+      onViewTypeChange={setViewType}
       isShrunk={isShrunk}
     >
       {currentView === 'Calendar' ? (
@@ -294,6 +302,7 @@ const App: React.FC = () => {
           onUpdateRequest={handleUpdateRequest}
           onDeleteRequest={handleDeleteRequest}
           isShrunk={isShrunk}
+          viewType={viewType}
         />
       ) : currentView === 'Reports' ? (
         <Reports 

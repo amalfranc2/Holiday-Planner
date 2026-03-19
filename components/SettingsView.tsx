@@ -30,6 +30,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateUsers,
   onUpdateConfig,
 }) => {
+  const thresholds = systemConfig.heatmapThresholds || { low: 10, medium: 20, high: 30, critical: 45 };
+  const stripeStyle = { 
+    backgroundImage: 'linear-gradient(45deg, rgba(0,0,0,0.1) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1) 75%, transparent 75%, transparent)', 
+    backgroundSize: '4px 4px' 
+  };
+  const stripeStyleWhite = { 
+    backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent)', 
+    backgroundSize: '4px 4px' 
+  };
+
   const [editingBranch, setEditingBranch] = useState<Partial<Branch> | null>(null);
   const [editingStaff, setEditingStaff] = useState<Partial<Staff> | null>(null);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
@@ -54,8 +64,57 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   });
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [smtpSaveMessage, setSmtpSaveMessage] = useState({ text: '', type: '' });
+  const [driveStatus, setDriveStatus] = useState<{ configured: boolean, folderIdSet: boolean, verified: boolean, error: string | null, serviceAccountEmail?: string } | null>(null);
+  const [driveConfig, setDriveConfig] = useState({
+    client_email: '',
+    private_key: '',
+    folder_id: ''
+  });
+  const [showDriveKey, setShowDriveKey] = useState(false);
+  const [driveSaveMessage, setDriveSaveMessage] = useState({ text: '', type: '' });
 
   const isAdmin = role === 'HeadOffice';
+
+  const fetchDriveStatus = async () => {
+    try {
+      const res = await fetch('/api/drive-status');
+      const data = await res.json();
+      setDriveStatus(data);
+    } catch (err) {
+      console.error('Failed to fetch drive status');
+    }
+  };
+
+  const fetchDriveConfig = async () => {
+    try {
+      const res = await fetch('/api/drive-config');
+      const data = await res.json();
+      if (data.client_email || data.folder_id) setDriveConfig(data);
+    } catch (err) {
+      console.error('Failed to fetch Drive config');
+    }
+  };
+
+  const handleSaveDrive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDriveSaveMessage({ text: 'Saving...', type: 'info' });
+    try {
+      const res = await fetch('/api/drive-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(driveConfig)
+      });
+      if (res.ok) {
+        setDriveSaveMessage({ text: 'Drive settings saved successfully!', type: 'success' });
+        fetchDriveStatus();
+        setTimeout(() => setDriveSaveMessage({ text: '', type: '' }), 3000);
+      } else {
+        throw new Error('Failed to save');
+      }
+    } catch (err: any) {
+      setDriveSaveMessage({ text: `Error: ${err.message}`, type: 'error' });
+    }
+  };
 
   const fetchSmtpConfig = async () => {
     try {
@@ -124,7 +183,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   React.useEffect(() => {
     fetchEmailStatus();
-    if (isAdmin) fetchSmtpConfig();
+    if (isAdmin) {
+      fetchSmtpConfig();
+      fetchDriveConfig();
+      fetchDriveStatus();
+    }
   }, [isAdmin]);
 
   const handlePasswordChange = (e: React.FormEvent) => {
@@ -332,6 +395,116 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     Staff who had an approved holiday in these months last year will be flagged with a "Rotation Warning" badge in the request modal.
                   </p>
                 </div>
+
+                <div className="pt-6 border-t border-gray-100">
+                  <label className="block text-sm font-bold text-gray-700 mb-3">Heatmap Risk Thresholds (%)</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Low (Emerald)</label>
+                      <input 
+                        type="number" 
+                        value={systemConfig.heatmapThresholds?.low || 10}
+                        onChange={e => onUpdateConfig({...systemConfig, heatmapThresholds: {...(systemConfig.heatmapThresholds || {low: 10, medium: 20, high: 30, critical: 45}), low: parseInt(e.target.value) || 0}})}
+                        className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Medium (Amber)</label>
+                      <input 
+                        type="number" 
+                        value={systemConfig.heatmapThresholds?.medium || 20}
+                        onChange={e => onUpdateConfig({...systemConfig, heatmapThresholds: {...(systemConfig.heatmapThresholds || {low: 10, medium: 20, high: 30, critical: 45}), medium: parseInt(e.target.value) || 0}})}
+                        className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">High (Orange)</label>
+                      <input 
+                        type="number" 
+                        value={systemConfig.heatmapThresholds?.high || 30}
+                        onChange={e => onUpdateConfig({...systemConfig, heatmapThresholds: {...(systemConfig.heatmapThresholds || {low: 10, medium: 20, high: 30, critical: 45}), high: parseInt(e.target.value) || 0}})}
+                        className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Critical (Rose)</label>
+                      <input 
+                        type="number" 
+                        value={systemConfig.heatmapThresholds?.critical || 45}
+                        onChange={e => onUpdateConfig({...systemConfig, heatmapThresholds: {...(systemConfig.heatmapThresholds || {low: 10, medium: 20, high: 30, critical: 45}), critical: parseInt(e.target.value) || 0}})}
+                        className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[11px] text-gray-500 italic">
+                    <i className="fa-solid fa-circle-info mr-1"></i>
+                    Configure the percentage of staff off that triggers different risk levels on the heatmap.
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100">
+                  <div className="space-y-4">
+                    <div>
+                      <h5 className="text-sm font-bold text-gray-700 mb-2">Risk Heatmap (Striped) - <span className="text-xs font-normal text-gray-500 italic">Used for pending requests or mixed availability</span></h5>
+                      <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-[14px]">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-emerald-100 border-[0.5px] border-emerald-200"></div>
+                          <span className="text-gray-600">Less than {thresholds.low}%: Emerald (Light Green)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-amber-100 border-[0.5px] border-amber-200 relative overflow-hidden">
+                            <div className="absolute inset-0" style={stripeStyle}></div>
+                          </div>
+                          <span className="text-gray-600">{thresholds.low}% to {thresholds.medium}%: Amber (Yellow/Orange)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-orange-200 border-[0.5px] border-orange-300 relative overflow-hidden">
+                            <div className="absolute inset-0" style={stripeStyle}></div>
+                          </div>
+                          <span className="text-gray-600">{thresholds.medium + 1}% to {thresholds.high}%: Orange</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-rose-200 border-[0.5px] border-rose-300 relative overflow-hidden">
+                            <div className="absolute inset-0" style={stripeStyle}></div>
+                          </div>
+                          <span className="text-gray-600">{thresholds.high + 1}% to {thresholds.critical}%: Rose (Light Red/Pink)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-red-600 border-[0.5px] border-red-700 relative overflow-hidden">
+                            <div className="absolute inset-0" style={stripeStyleWhite}></div>
+                          </div>
+                          <span className="text-gray-600">Over {thresholds.critical}%: Solid Red (with white stripes)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h5 className="text-sm font-bold text-gray-700 mb-2">Approved Heatmap (Solid) - <span className="text-xs font-normal text-gray-500 italic">Used for confirmed/approved holidays</span></h5>
+                      <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-[14px]">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-emerald-100 border-[0.5px] border-emerald-200"></div>
+                          <span className="text-gray-600">Less than {thresholds.low}%: Emerald (Light Green)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-rose-100 border-[0.5px] border-rose-200"></div>
+                          <span className="text-gray-600">{thresholds.low}% to {thresholds.medium}%: Light Rose</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-rose-300 border-[0.5px] border-rose-400"></div>
+                          <span className="text-gray-600">{thresholds.medium + 1}% to {thresholds.high}%: Medium Rose</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-rose-500 border-[0.5px] border-rose-600"></div>
+                          <span className="text-gray-600">{thresholds.high + 1}% to {thresholds.critical}%: Deep Rose</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-[14px] h-[14px] rounded-[1px] bg-rose-900 border-[0.5px] border-rose-950"></div>
+                          <span className="text-gray-600">Over {thresholds.critical}%: Dark Rose (Maroon/Near Black)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -356,6 +529,89 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               <h3 className="text-xl font-bold text-gray-800">{currentUser.name}</h3>
               <p className="text-sm text-gray-500 capitalize">{currentUser.role} Account</p>
+            </div>
+
+            <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+              <h4 className="font-bold text-gray-700 mb-2">Default Application View</h4>
+              <p className="text-[10px] text-gray-500 mb-4">Choose which view you see first when logging in.</p>
+              <div className="flex bg-white p-1 rounded-xl border border-gray-200">
+                <button
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, defaultView: 'Dashboard' } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all ${
+                    (currentUser.defaultView || 'Dashboard') === 'Dashboard'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, defaultView: 'Yearly' } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all ${
+                    (currentUser.defaultView || 'Dashboard') === 'Yearly'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Planner
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+              <h4 className="font-bold text-gray-700 mb-2">Bubble Menu Style</h4>
+              <p className="text-[10px] text-gray-500 mb-4">Choose how the quick action menu appears.</p>
+              
+              <div className="flex items-center justify-between py-2 mb-4 border-b border-gray-200 pb-4">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Show Quick Action Menu</p>
+                  <p className="text-[10px] text-gray-500">Enable the floating bubble menu in the bottom right.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, showBubble: u.showBubble === false ? true : false } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.showBubble !== false ? 'bg-primary-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.showBubble !== false ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+
+              <div className={`flex bg-white p-1 rounded-xl border border-gray-200 transition-opacity ${currentUser.showBubble === false ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                <button
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, bubbleStyle: 'classic' } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all ${
+                    (currentUser.bubbleStyle || 'arc') === 'classic'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Classic
+                </button>
+                <button
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, bubbleStyle: 'arc' } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-all ${
+                    (currentUser.bubbleStyle || 'arc') === 'arc'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  Arc
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
@@ -422,6 +678,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   className={`w-12 h-6 rounded-full transition-all relative ${currentUser.receiveNotifications ? 'bg-primary-600' : 'bg-gray-300'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+              <div className="flex items-center justify-between py-2 mt-4 border-t border-gray-100 pt-4">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Smooth Scrolling</p>
+                  <p className="text-[10px] text-gray-500">Enable smooth animation when scrolling to the current month.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, smoothScroll: currentUser.smoothScroll === false ? true : false } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.smoothScroll !== false ? 'bg-primary-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.smoothScroll !== false ? 'left-7' : 'left-1'}`}></div>
                 </button>
               </div>
             </div>
@@ -712,6 +983,105 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-xs text-gray-500 italic">Loading diagnostics...</p>
               )}
             </div>
+
+            <form onSubmit={handleSaveDrive} className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <i className="fa-brands fa-google-drive text-primary-600"></i>
+                  Google Drive Configuration
+                </h3>
+                <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded-xl text-xs font-bold hover:bg-primary-700 transition-all">
+                  Save Drive Settings
+                </button>
+              </div>
+
+              {driveSaveMessage.text && (
+                <div className={`p-3 rounded-xl text-xs font-bold ${driveSaveMessage.type === 'success' ? 'bg-emerald-50 text-emerald-600' : driveSaveMessage.type === 'info' ? 'bg-primary-50 text-primary-600' : 'bg-red-50 text-red-600'}`}>
+                  {driveSaveMessage.text}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Service Account Email</label>
+                  <input 
+                    type="text" 
+                    value={driveConfig.client_email}
+                    onChange={e => setDriveConfig({...driveConfig, client_email: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                    placeholder="your-service-account@project.iam.gserviceaccount.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Private Key</label>
+                  <div className="relative">
+                    <textarea 
+                      value={driveConfig.private_key}
+                      onChange={e => setDriveConfig({...driveConfig, private_key: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none h-24 text-[10px] font-mono"
+                      placeholder="-----BEGIN PRIVATE KEY-----\n..."
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Google Drive Folder ID (or URL)</label>
+                  <input 
+                    type="text" 
+                    value={driveConfig.folder_id}
+                    onChange={e => setDriveConfig({...driveConfig, folder_id: e.target.value})}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                    placeholder="1a2b3c4d5e6f7g8h9i0j..."
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">You can paste the full folder URL or just the ID.</p>
+                </div>
+              </div>
+
+              {driveStatus && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-xs font-bold text-gray-700">Connection Status</p>
+                    <button type="button" onClick={fetchDriveStatus} className="text-[10px] text-primary-600 hover:underline">Check Again</button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className={`p-3 rounded-lg border flex items-center gap-2 ${driveStatus.configured ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                      <div className={`w-2 h-2 rounded-full ${driveStatus.configured ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                      <span className="text-[10px] font-bold text-gray-700">Credentials: {driveStatus.configured ? 'OK' : 'Missing'}</span>
+                    </div>
+                    <div className={`p-3 rounded-lg border flex items-center gap-2 ${driveStatus.folderIdSet ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                      <div className={`w-2 h-2 rounded-full ${driveStatus.folderIdSet ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                      <span className="text-[10px] font-bold text-gray-700">Folder ID: {driveStatus.folderIdSet ? 'OK' : 'Missing'}</span>
+                    </div>
+                  </div>
+
+                  {driveStatus.configured && driveStatus.folderIdSet && (
+                    <div className={`mt-3 p-3 rounded-lg border flex items-start gap-2 ${driveStatus.verified ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                      <i className={`fa-solid ${driveStatus.verified ? 'fa-circle-check text-emerald-500' : 'fa-circle-xmark text-red-500'} mt-0.5`}></i>
+                      <div>
+                        <p className={`text-[10px] font-bold ${driveStatus.verified ? 'text-emerald-800' : 'text-red-800'}`}>
+                          {driveStatus.verified ? 'Google Drive is active' : 'Connection Error'}
+                        </p>
+                        <p className={`text-[9px] ${driveStatus.verified ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {driveStatus.verified 
+                            ? 'Attachments will be uploaded to your shared folder.' 
+                            : (driveStatus.error || 'Failed to verify access. Ensure the folder is shared with the service account.')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!driveStatus.verified && driveConfig.client_email && (
+                    <div className="mt-4 p-4 bg-white rounded-xl border border-gray-200 space-y-2">
+                      <p className="text-[10px] font-bold text-gray-800">Final Step Required:</p>
+                      <p className="text-[10px] text-gray-600">Share your Google Drive folder with this email as an <strong>Editor</strong>:</p>
+                      <div className="p-2 bg-primary-50 rounded border border-primary-100">
+                        <code className="text-[10px] text-primary-700 break-all select-all">{driveConfig.client_email}</code>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </form>
           </div>
         )}
         {activeTab === 'Staff' && (

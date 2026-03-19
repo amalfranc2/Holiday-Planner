@@ -43,6 +43,13 @@ const STAFF_NAMES = [
   "Daniel Taylor", "Matthew Thomas", "Anthony Moore", "Mark Martin", "Donald Jackson"
 ];
 
+export const DEFAULT_HEATMAP_THRESHOLDS = {
+  low: 10,
+  medium: 20,
+  high: 30,
+  critical: 45
+};
+
 // This generates mock staff for the branches defined above
 export const MOCK_STAFF: Staff[] = BRANCHES.flatMap((branch, bIdx) => 
   CATEGORIES.flatMap((cat, catIdx) => 
