@@ -97,15 +97,31 @@ const App: React.FC = () => {
       try {
         const fetchJson = async (url: string) => {
           const r = await fetch(url);
-          const data = await r.json();
-          if (!r.ok) {
-            if (r.status === 500) throw new Error(data.error || "Database connection failed (Server Error 500)");
-            return null;
+          const contentType = r.headers.get("content-type");
+          
+          if (!r.ok || !contentType || !contentType.includes("application/json")) {
+            const text = await r.text();
+            let errorMsg = `Server Error (${r.status})`;
+            
+            try {
+              const data = JSON.parse(text);
+              errorMsg = data.error || errorMsg;
+            } catch (e) {
+              if (text.includes("POSTGRES_URL")) {
+                errorMsg = "Database connection failed: POSTGRES_URL is missing in environment variables.";
+              } else if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
+                errorMsg = `Backend returned an HTML page instead of JSON. This usually means the server failed to start or a route is misconfigured. Status: ${r.status}`;
+              } else {
+                errorMsg = text.slice(0, 100) || errorMsg;
+              }
+            }
+            throw new Error(errorMsg);
           }
-          return data;
+          return await r.json();
         };
 
-        const [resBranches, resStaff, resRequests, resUsers, resConfig] = await Promise.all([
+        const [resHealth, resBranches, resStaff, resRequests, resUsers, resConfig] = await Promise.all([
+          fetchJson('/api/health'),
           fetchJson('/api/branches'),
           fetchJson('/api/staff'),
           fetchJson('/api/requests'),
@@ -252,12 +268,13 @@ const App: React.FC = () => {
             {dbError}
           </p>
           <div className="bg-gray-50 p-4 rounded-xl text-left text-xs font-mono text-gray-500 mb-6 border border-gray-100">
-            <p className="font-bold text-gray-700 mb-1">Troubleshooting:</p>
+            <p className="font-bold text-gray-700 mb-1">How to fix this on Vercel:</p>
             <ul className="list-disc ml-4 space-y-1">
-              <li>Check if your <code className="bg-gray-200 px-1 rounded">.env</code> file exists in the root folder.</li>
-              <li>Ensure it contains <code className="bg-gray-200 px-1 rounded">POSTGRES_URL=...</code></li>
-              <li>Verify there are no spaces around the <code className="bg-gray-200 px-1 rounded">=</code> sign.</li>
-              <li>Restart your server after editing the file.</li>
+              <li>Open your <strong>Vercel Dashboard</strong>.</li>
+              <li>Go to your project <strong>Settings</strong> &gt; <strong>Environment Variables</strong>.</li>
+              <li>Add <strong>POSTGRES_URL</strong> with your database connection string.</li>
+              <li><strong>Redeploy</strong> your application for the changes to take effect.</li>
+              <li>Ensure the value has no quotes or extra spaces.</li>
             </ul>
           </div>
           <button 

@@ -10,6 +10,7 @@ import { sendEmail, SmtpConfig } from "./email.js";
 import { google } from "googleapis";
 import multer from "multer";
 import fs from "fs";
+import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,11 +58,21 @@ async function getDriveClient() {
 }
 
 // Ensure uploads directory exists
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+// On Vercel/Serverless, we must use /tmp
+const uploadsDir = (process.env.VERCEL || process.env.NODE_ENV === 'production') 
+  ? path.join(os.tmpdir(), 'uploads') 
+  : path.join(__dirname, '..', 'uploads');
+
+if (!fs.existsSync(uploadsDir)) {
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log(`Created uploads directory at: ${uploadsDir}`);
+  } catch (err) {
+    console.warn(`Failed to create uploads directory at ${uploadsDir}:`, err);
+  }
 }
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: uploadsDir });
 
 // --- Database Initialization ---
 async function initDb() {
@@ -181,19 +192,16 @@ if (process.env.POSTGRES_URL) {
   process.env.POSTGRES_URL = process.env.POSTGRES_URL.trim().replace(/^["']|["']$/g, '');
 }
 
-// --- Database Initialization ---
-if (process.env.POSTGRES_URL) {
-  console.log("Database URL detected. Attempting to initialize...");
-  initDb().catch(err => {
-    console.error("Database initialization failed during startup:", err.message);
-  });
-} else {
-  console.warn("⚠️  WARNING: POSTGRES_URL is missing.");
-  console.warn("Local: Ensure your .env file exists and contains POSTGRES_URL.");
-  console.warn("Cloud: Ensure you have added POSTGRES_URL to your environment variables.");
-}
-
 // --- API Routes ---
+
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    dbConnected: !!process.env.POSTGRES_URL,
+    env: process.env.NODE_ENV
+  });
+});
 
 // Branches
 app.get("/api/branches", async (req, res) => {
@@ -818,26 +826,42 @@ async function setupVite() {
   }
 }
 
-// Only run Vite setup if not on Vercel
-if (!process.env.VERCEL) {
-  setupVite();
+// --- Startup ---
+async function startServer() {
+  if (process.env.POSTGRES_URL) {
+    console.log("Database URL detected. Attempting to initialize...");
+    await initDb().catch(err => {
+      console.error("Database initialization failed during startup:", err.message);
+    });
+  } else {
+    console.warn("⚠️  WARNING: POSTGRES_URL is missing.");
+    console.warn("Local: Ensure your .env file exists and contains POSTGRES_URL.");
+    console.warn("Cloud: Ensure you have added POSTGRES_URL to your environment variables.");
+  }
+
+  // Only run Vite setup if not on Vercel
+  if (!process.env.VERCEL) {
+    await setupVite();
+  }
+
+  // Global error handler to ensure JSON responses
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Global error handler:", err);
+    res.status(err.status || 500).json({
+      error: err.message || "An unexpected error occurred"
+    });
+  });
+
+  // Listen only if not on Vercel
+  if (!process.env.VERCEL) {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-// Global error handler to ensure JSON responses
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("Global error handler:", err);
-  res.status(err.status || 500).json({
-    error: err.message || "An unexpected error occurred"
-  });
-});
+startServer();
 
 // Export for Vercel
 export default app;
-
-// Listen only if run directly
-if (import.meta.url === `file://${process.argv[1]}` || !process.env.VERCEL) {
-  const PORT = 3000;
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
