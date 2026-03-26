@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Branch, Staff, UserRole, StaffCategory, User, SystemConfig } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Branch, Staff, UserRole, StaffCategory, User, SystemConfig, SystemLog } from '../types';
 import { CATEGORIES, THEMES } from '../constants';
 import ConfirmationModal from './ConfirmationModal';
 import { clsx, type ClassValue } from 'clsx';
@@ -56,7 +56,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingBranch, setEditingBranch] = useState<Partial<Branch> | null>(null);
   const [editingStaff, setEditingStaff] = useState<Partial<Staff> | null>(null);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
-  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config'>(role === 'S-ADMIN' || role === 'ADMIN' ? 'Branches' : 'Staff');
+  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config' | 'Logs'>(role === 'S-ADMIN' || role === 'ADMIN' ? 'Branches' : 'Staff');
+  
+  const [logs, setLogs] = useState<SystemLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsOffset, setLogsOffset] = useState(0);
+  const [hasMoreLogs, setHasMoreLogs] = useState(true);
+  const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
+  const [logFilters, setLogFilters] = useState({ action: '', tableName: '', startDate: '', endDate: '' });
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -413,6 +420,55 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const currentBranchName = branches.find(b => b.id === currentBranchId)?.name || 'Unknown Branch';
 
+  const fetchLogs = async (offset = 0, reset = false) => {
+    if (role !== 'S-ADMIN') return;
+    setLoadingLogs(true);
+    try {
+      const queryParams = new URLSearchParams({
+        limit: '25',
+        offset: offset.toString(),
+        action: logFilters.action,
+        tableName: logFilters.tableName,
+        startDate: logFilters.startDate,
+        endDate: logFilters.endDate
+      });
+      const response = await fetch(`/api/logs?${queryParams}`, {
+        headers: {
+          'x-user-role': role
+        }
+      });
+      if (response.ok) {
+        const newLogs = await response.json();
+        if (reset) {
+          setLogs(newLogs);
+          setLogsOffset(newLogs.length);
+        } else {
+          setLogs(prev => [...prev, ...newLogs]);
+          setLogsOffset(offset + newLogs.length);
+        }
+        setHasMoreLogs(newLogs.length === 25);
+      }
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'Logs' && logs.length === 0) {
+      fetchLogs(0, true);
+    }
+  }, [activeTab]);
+
+  const handleFilterLogs = () => {
+    fetchLogs(0, true);
+  };
+
+  const handleLoadMoreLogs = () => {
+    fetchLogs(logsOffset, false);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -446,6 +502,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                       className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
                     >
                       Config
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('Logs')}
+                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Logs' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                    >
+                      Logs
                     </button>
                   </>
                 )}
@@ -1418,6 +1480,193 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             </form>
+          </div>
+        )}
+        {activeTab === 'Logs' && isSAdmin && (
+          <div className="max-w-6xl mx-auto space-y-6 py-4">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <i className="fa-solid fa-list-ul text-primary-600"></i>
+                  System Audit Logs
+                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select 
+                    value={logFilters.action}
+                    onChange={e => setLogFilters({...logFilters, action: e.target.value})}
+                    className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">All Actions</option>
+                    <option value="INSERT">Insert</option>
+                    <option value="UPDATE">Update</option>
+                    <option value="DELETE">Delete</option>
+                    <option value="LOGIN">Login</option>
+                    <option value="CONFIG_CHANGE">Config Change</option>
+                  </select>
+                  <input 
+                    type="date"
+                    value={logFilters.startDate}
+                    onChange={e => setLogFilters({...logFilters, startDate: e.target.value})}
+                    className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <button 
+                    onClick={handleFilterLogs}
+                    className="px-4 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-bold hover:bg-primary-700 transition-all"
+                  >
+                    Filter
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setLogFilters({ action: '', tableName: '', startDate: '', endDate: '' });
+                      fetchLogs(0, true);
+                    }}
+                    className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200 transition-all"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Timestamp</th>
+                      <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">User</th>
+                      <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Action</th>
+                      <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Target</th>
+                      <th className="p-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {logs.map((log) => (
+                      <tr 
+                        key={log.id} 
+                        onClick={() => setSelectedLog(log)}
+                        className="hover:bg-gray-50 cursor-pointer transition-colors group"
+                      >
+                        <td className="p-4 text-xs text-gray-500 font-mono">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="p-4 text-xs font-medium text-gray-700">
+                          {log.userName || 'System'}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                            log.action === 'INSERT' ? 'bg-emerald-50 text-emerald-600' :
+                            log.action === 'UPDATE' ? 'bg-blue-50 text-blue-600' :
+                            log.action === 'DELETE' ? 'bg-red-50 text-red-600' :
+                            log.action === 'LOGIN' ? 'bg-purple-50 text-purple-600' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="p-4 text-xs text-gray-500">
+                          {log.tableName ? `${log.tableName} (${log.recordId})` : '-'}
+                        </td>
+                        <td className="p-4 text-xs text-gray-600 truncate max-w-xs">
+                          {log.details || (log.action === 'UPDATE' ? 'Record updated' : log.action === 'INSERT' ? 'New record created' : '')}
+                        </td>
+                      </tr>
+                    ))}
+                    {logs.length === 0 && !loadingLogs && (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-gray-400 text-xs italic">
+                          No logs found matching the criteria.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {hasMoreLogs && (
+                <div className="flex justify-center pt-4">
+                  <button 
+                    onClick={handleLoadMoreLogs}
+                    disabled={loadingLogs}
+                    className="px-6 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all disabled:opacity-50"
+                  >
+                    {loadingLogs ? 'Loading...' : 'Load More Logs'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selectedLog && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Log Details</h3>
+                  <p className="text-xs text-gray-500 mt-1">{new Date(selectedLog.timestamp).toLocaleString()}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedLog(null)}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-200 transition-all text-gray-400 hover:text-gray-600"
+                >
+                  <i className="fa-solid fa-xmark text-lg"></i>
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">User</p>
+                    <p className="text-sm font-bold text-gray-700">{selectedLog.userName || 'System'}</p>
+                    <p className="text-[10px] text-gray-500 font-mono">{selectedLog.userId || '-'}</p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Action</p>
+                    <p className="text-sm font-bold text-gray-700">{selectedLog.action}</p>
+                    <p className="text-[10px] text-gray-500">{selectedLog.tableName || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {selectedLog.details && (
+                  <div className="p-4 bg-primary-50 rounded-2xl border border-primary-100">
+                    <p className="text-[10px] font-bold text-primary-400 uppercase mb-1">Details</p>
+                    <p className="text-sm text-primary-700">{selectedLog.details}</p>
+                  </div>
+                )}
+
+                {(selectedLog.oldData || selectedLog.newData) && (
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Data Changes</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedLog.oldData && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-red-400 uppercase">Previous State</p>
+                          <pre className="p-4 bg-red-50/50 rounded-2xl border border-red-100 text-[10px] text-red-700 overflow-auto max-h-60 font-mono">
+                            {JSON.stringify(selectedLog.oldData, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {selectedLog.newData && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-emerald-400 uppercase">New State</p>
+                          <pre className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 text-[10px] text-emerald-700 overflow-auto max-h-60 font-mono">
+                            {JSON.stringify(selectedLog.newData, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+                <button 
+                  onClick={() => setSelectedLog(null)}
+                  className="px-6 py-2 bg-gray-800 text-white rounded-xl text-sm font-bold hover:bg-gray-900 transition-all"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {activeTab === 'Staff' && (

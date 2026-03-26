@@ -57,6 +57,30 @@ async function getDriveClient() {
   }
 }
 
+// --- System Logging Helper ---
+async function logAction(userId: string | null, userName: string | null, action: string, tableName?: string, recordId?: string, oldData?: any, newData?: any, details?: string, dbClient?: any) {
+  try {
+    const id = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const timestamp = new Date().toISOString();
+    const oldDataStr = oldData ? JSON.stringify(oldData) : null;
+    const newDataStr = newData ? JSON.stringify(newData) : null;
+    
+    if (dbClient) {
+      await dbClient.sql`
+        INSERT INTO system_logs (id, timestamp, user_id, user_name, action, table_name, record_id, old_data, new_data, details)
+        VALUES (${id}, ${timestamp}, ${userId}, ${userName}, ${action}, ${tableName || null}, ${recordId || null}, ${oldDataStr}, ${newDataStr}, ${details || null})
+      `;
+    } else {
+      await sql`
+        INSERT INTO system_logs (id, timestamp, user_id, user_name, action, table_name, record_id, old_data, new_data, details)
+        VALUES (${id}, ${timestamp}, ${userId}, ${userName}, ${action}, ${tableName || null}, ${recordId || null}, ${oldDataStr}, ${newDataStr}, ${details || null})
+      `;
+    }
+  } catch (err) {
+    console.error("Failed to log action:", err);
+  }
+}
+
 // Ensure uploads directory exists
 // On Vercel/Serverless, we must use /tmp
 const uploadsDir = (process.env.VERCEL || process.env.NODE_ENV === 'production') 
@@ -158,6 +182,21 @@ async function initDb() {
       );
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        action TEXT NOT NULL,
+        table_name TEXT,
+        record_id TEXT,
+        old_data TEXT,
+        new_data TEXT,
+        details TEXT
+      );
+    `;
+
     // Seed initial admin if not exists
     const adminExists = await sql`SELECT * FROM users WHERE username = 'admin'`;
     if (adminExists.rowCount === 0) {
@@ -228,7 +267,55 @@ async function initDb() {
       await sql`ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_rotation_month TEXT`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS is_staff_request BOOLEAN DEFAULT FALSE`;
-      console.log("Database migrations applied successfully");
+      
+      // --- Audit Trigger Setup ---
+      // This function will be called by triggers to log changes
+      await sql`
+        CREATE OR REPLACE FUNCTION audit_trigger_func()
+        RETURNS TRIGGER AS $$
+        DECLARE
+          v_user_id TEXT;
+          v_user_name TEXT;
+        BEGIN
+          -- Try to get user info from a temporary table or session variable if we implemented one,
+          -- but for now we'll just log the database change. 
+          -- In a more advanced setup, we'd pass the current user ID from the app.
+          
+          IF (TG_OP = 'DELETE') THEN
+            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, old_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, OLD.id::text, row_to_json(OLD)::text);
+            RETURN OLD;
+          ELSIF (TG_OP = 'UPDATE') THEN
+            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, old_data, new_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(OLD)::text, row_to_json(NEW)::text);
+            RETURN NEW;
+          ELSIF (TG_OP = 'INSERT') THEN
+            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, new_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(NEW)::text);
+            RETURN NEW;
+          END IF;
+          RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql;
+      `;
+
+      // Apply triggers to key tables
+      const tablesToAudit = ['holiday_requests', 'staff', 'users', 'system_config', 'branches'];
+      for (const table of tablesToAudit) {
+        await db.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'audit_trigger_${table}') THEN
+              CREATE TRIGGER audit_trigger_${table}
+              AFTER INSERT OR UPDATE OR DELETE ON ${table}
+              FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+            END IF;
+          END;
+          $$;
+        `);
+      }
+
+      console.log("Database migrations and audit triggers applied successfully");
     } catch (migErr) {
       console.warn("Migration warning (columns might already exist):", migErr);
     }
@@ -333,6 +420,7 @@ app.post("/api/login", async (req, res) => {
     }
     
     const user = result.rows[0];
+    await logAction(user.id, user.name, 'LOGIN', 'users', user.id, null, null, `User logged in: ${user.username}`);
     if (user.chartPreferences) {
       try {
         user.chartPreferences = JSON.parse(user.chartPreferences);
@@ -506,6 +594,9 @@ app.post("/api/requests", async (req, res) => {
     const newRequests = req.body;
     if (!Array.isArray(newRequests)) return res.status(400).json({ error: "Invalid data" });
 
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
     const uniqueRequests = Array.from(new Map(newRequests.filter(r => r?.id).map(r => [r.id, r])).values());
     
     const { rows: oldRequests } = await client.sql`SELECT id, status FROM holiday_requests`;
@@ -513,6 +604,8 @@ app.post("/api/requests", async (req, res) => {
 
     await client.sql`BEGIN`;
     for (const r of uniqueRequests) {
+      const oldReq = oldRequestsMap.get(r.id);
+      
       await client.sql`
         INSERT INTO holiday_requests (id, staff_id, branch_id, start_date, end_date, status, notes, created_at, attachment_url, attachment_id, is_urgent, is_staff_request) 
         VALUES (${r.id}, ${r.staffId}, ${r.branchId}, ${r.startDate}, ${r.endDate}, ${r.status}, ${r.notes}, ${r.createdAt}, ${r.attachmentUrl}, ${r.attachmentId}, ${r.isUrgent || false}, ${r.isStaffRequest || false})
@@ -529,6 +622,13 @@ app.post("/api/requests", async (req, res) => {
           is_urgent = EXCLUDED.is_urgent,
           is_staff_request = EXCLUDED.is_staff_request
       `;
+
+      // Manual logging with user context
+      if (!oldReq) {
+        await logAction(userId, userName, 'CREATE_REQUEST', 'holiday_requests', r.id, null, r, `New holiday request created for staff ${r.staffId}`, client);
+      } else if (oldReq.status !== r.status) {
+        await logAction(userId, userName, 'UPDATE_REQUEST_STATUS', 'holiday_requests', r.id, oldReq, r, `Request status changed from ${oldReq.status} to ${r.status}`, client);
+      }
     }
 
     await client.sql`COMMIT`;
@@ -666,8 +766,11 @@ app.post("/api/upload", upload.single('file'), async (req, res) => {
     const config = await getDriveConfig();
     let folderId = config?.folder_id || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
     
+    // Better folder ID extraction from various URL formats
     if (folderId.includes('/folders/')) {
-      folderId = folderId.split('/folders/')[1].split('?')[0];
+      folderId = folderId.split('/folders/')[1].split('?')[0].split('/')[0];
+    } else if (folderId.includes('id=')) {
+      folderId = folderId.split('id=')[1].split('&')[0];
     }
 
     if (!folderId) {
@@ -730,12 +833,16 @@ app.post("/api/upload", upload.single('file'), async (req, res) => {
       webViewLink: updateResponse.data.webViewLink 
     });
   } catch (error: any) {
-    console.error("Upload error:", error.message);
+    let errorMessage = error.message || "Failed to upload to Google Drive";
+    if (errorMessage.toLowerCase().includes('file not found')) {
+      errorMessage = `Google Drive error: File or Folder not found. Please verify your Folder ID and ensure the folder is shared with your Service Account email as an Editor. (Original error: ${errorMessage})`;
+    }
+    console.error("Upload error:", errorMessage);
     // Clean up local file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: error.message || "Failed to upload to Google Drive" });
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -795,14 +902,14 @@ app.get("/api/users", async (req, res) => {
     let rows;
     if (userRole === 'Manager' && userBranchId) {
       // Managers can see users in their branch (including the branch staff user)
-      const result = await sql.query(`SELECT ${selectClause} FROM users WHERE branch_id = $1 OR role = 'S-ADMIN' OR role = 'ADMIN'`, [userBranchId]);
+      const result = await db.query(`SELECT ${selectClause} FROM users WHERE branch_id = $1 OR role = 'S-ADMIN' OR role = 'ADMIN'`, [userBranchId]);
       rows = result.rows;
     } else if (userRole === 'Staff') {
       // Staff can only see themselves (though they usually don't access this)
-      const result = await sql.query(`SELECT ${selectClause} FROM users WHERE id = $1`, [userId]);
+      const result = await db.query(`SELECT ${selectClause} FROM users WHERE id = $1`, [userId]);
       rows = result.rows;
     } else {
-      const result = await sql.query(`SELECT ${selectClause} FROM users`);
+      const result = await db.query(`SELECT ${selectClause} FROM users`);
       rows = result.rows;
     }
 
@@ -1024,18 +1131,24 @@ app.get('/api/drive-status', async (req, res) => {
 
       let folderId = config?.folder_id || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
       if (folderId.includes('/folders/')) {
-        folderId = folderId.split('/folders/')[1].split('?')[0];
+        folderId = folderId.split('/folders/')[1].split('?')[0].split('/')[0];
+      } else if (folderId.includes('id=')) {
+        folderId = folderId.split('id=')[1].split('&')[0];
       }
       
-      await drive.files.list({
-        q: `'${folderId}' in parents`,
-        pageSize: 1,
-        fields: 'files(id, name)'
+      await drive.files.get({
+        fileId: folderId,
+        fields: 'id, name',
+        supportsAllDrives: true
       });
       verified = true;
     } catch (err: any) {
-      console.error("Drive verification failed:", err.message);
-      error = err.message;
+      let errorMessage = err.message;
+      if (errorMessage.toLowerCase().includes('file not found')) {
+        errorMessage = `Folder not found. Please ensure the Folder ID is correct and the folder is shared with the Service Account email.`;
+      }
+      console.error("Drive verification failed:", errorMessage);
+      error = errorMessage;
     }
   }
 
@@ -1046,6 +1159,55 @@ app.get('/api/drive-status', async (req, res) => {
     error,
     serviceAccountEmail: config?.client_email || process.env.GOOGLE_CLIENT_EMAIL
   });
+});
+
+app.get("/api/logs", requireSAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 25;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const action = req.query.action as string;
+    const tableName = req.query.tableName as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+
+    let query = `SELECT * FROM system_logs WHERE 1=1`;
+    const params: any[] = [];
+
+    if (action) {
+      params.push(action);
+      query += ` AND action = $${params.length}`;
+    }
+    if (tableName) {
+      params.push(tableName);
+      query += ` AND table_name = $${params.length}`;
+    }
+    if (startDate) {
+      params.push(startDate);
+      query += ` AND timestamp >= $${params.length}`;
+    }
+    if (endDate) {
+      params.push(endDate);
+      query += ` AND timestamp <= $${params.length}`;
+    }
+
+    query += ` ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const { rows } = await db.query(query, params);
+    
+    // Parse JSON strings back to objects
+    const logs = rows.map(row => ({
+      ...row,
+      oldData: row.old_data ? JSON.parse(row.old_data) : null,
+      newData: row.new_data ? JSON.parse(row.new_data) : null,
+      userId: row.user_id,
+      userName: row.user_name
+    }));
+
+    res.json(logs);
+  } catch (error: any) {
+    console.error("Failed to fetch logs:", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/drive-config", requireSAdmin, async (req, res) => {
@@ -1068,6 +1230,7 @@ app.post("/api/drive-config", requireSAdmin, async (req, res) => {
         private_key = EXCLUDED.private_key,
         folder_id = EXCLUDED.folder_id
     `;
+    await logAction(null, null, 'CONFIG_CHANGE', 'google_drive_config', '1', null, null, 'Google Drive configuration updated');
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1098,6 +1261,7 @@ app.post("/api/smtp-config", requireSAdmin, async (req, res) => {
         from_email = EXCLUDED.from_email,
         app_url = EXCLUDED.app_url
     `;
+    await logAction(null, null, 'CONFIG_CHANGE', 'smtp_config', '1', null, null, 'SMTP configuration updated');
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1149,6 +1313,7 @@ app.post("/api/config", requireSAdmin, async (req, res) => {
   try {
     const config = req.body;
     await sql`UPDATE system_config SET prime_time_months = ${JSON.stringify(config.primeTimeMonths)}, default_allowance = ${config.defaultAllowance} WHERE id = 1`;
+    await logAction(null, null, 'CONFIG_CHANGE', 'system_config', '1', null, null, 'System configuration updated');
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to update config" });

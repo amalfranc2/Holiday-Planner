@@ -74,3 +74,16 @@ export interface UserContextType {
   role: UserRole;
   branchId?: string; // Only for Managers
 }
+
+export interface SystemLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  action: 'INSERT' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'CONFIG_CHANGE' | 'SYSTEM';
+  tableName?: string;
+  recordId?: string;
+  oldData?: any;
+  newData?: any;
+  details?: string;
+}

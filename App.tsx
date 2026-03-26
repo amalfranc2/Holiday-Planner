@@ -49,6 +49,7 @@ const App: React.FC = () => {
     try {
       const headers = {
         'x-user-id': user.id,
+        'x-user-name': user.name,
         'x-user-role': user.role,
         'x-user-branch-id': user.branchId || ''
       };
@@ -159,6 +160,7 @@ const App: React.FC = () => {
   const getHeaders = () => ({
     'Content-Type': 'application/json',
     'x-user-id': currentUser?.id || '',
+    'x-user-name': currentUser?.name || '',
     'x-user-role': currentUser?.role || '',
     'x-user-branch-id': currentUser?.branchId || ''
   });
