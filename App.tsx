@@ -227,6 +227,7 @@ const App: React.FC = () => {
       if (!res.ok) throw new Error(`Failed to sync to ${url}`);
     } catch (error) {
       console.error(`Failed to sync data to ${endpoint}`, error);
+      throw error; // Re-throw for optimistic rollback
     }
   };
 
@@ -237,27 +238,47 @@ const App: React.FC = () => {
       status: data.status || 'Pending',
       createdAt: new Date().toISOString()
     } as HolidayRequest;
+    
+    const previousRequests = [...requests];
     setRequests(prev => [...prev, newReq]);
-    await syncData('/api/requests', [newReq]);
+    
+    try {
+      await syncData('/api/requests', [newReq]);
+    } catch (error) {
+      setRequests(previousRequests);
+    }
   };
 
   const handleUpdateRequest = async (data: Partial<HolidayRequest>) => {
+    const previousRequests = [...requests];
     setRequests(prev => prev.map(r => r.id === data.id ? { ...r, ...data } : r));
-    const updatedReq = requests.find(r => r.id === data.id);
-    if (updatedReq) {
-      await syncData('/api/requests', [{ ...updatedReq, ...data }]);
+    
+    try {
+      const updatedReq = requests.find(r => r.id === data.id);
+      if (updatedReq) {
+        await syncData('/api/requests', [{ ...updatedReq, ...data }]);
+      }
+    } catch (error) {
+      setRequests(previousRequests);
     }
   };
 
   const handleDeleteRequest = async (id: string) => {
+    const previousRequests = [...requests];
     setRequests(prev => prev.filter(r => r.id !== id));
-    await syncData('/api/requests', id, 'DELETE');
+    
+    try {
+      await syncData('/api/requests', id, 'DELETE');
+    } catch (error) {
+      setRequests(previousRequests);
+    }
   };
 
   const handleUpdateUsers = async (updatedUsers: User[]) => {
+    const previousUsers = [...users];
+    const previousMe = currentUser ? { ...currentUser } : null;
+
     setUsers(updatedUsers);
-    await syncData('/api/users', updatedUsers);
-    
     if (currentUser) {
       const updatedMe = updatedUsers.find(u => u.id === currentUser.id);
       if (updatedMe) {
@@ -265,37 +286,86 @@ const App: React.FC = () => {
         localStorage.setItem('holiday_session', JSON.stringify(updatedMe));
       }
     }
+
+    try {
+      await syncData('/api/users', updatedUsers);
+    } catch (error) {
+      setUsers(previousUsers);
+      if (previousMe) {
+        setCurrentUser(previousMe);
+        localStorage.setItem('holiday_session', JSON.stringify(previousMe));
+      }
+    }
   };
 
   const handleDeleteUser = async (id: string) => {
+    const previousUsers = [...users];
     setUsers(prev => prev.filter(u => u.id !== id));
-    await syncData('/api/users', id, 'DELETE');
+    
+    try {
+      await syncData('/api/users', id, 'DELETE');
+    } catch (error) {
+      setUsers(previousUsers);
+    }
   };
 
   const handleUpdateBranches = async (updatedBranches: Branch[]) => {
+    const previousBranches = [...branches];
     setBranches(updatedBranches);
-    await syncData('/api/branches', updatedBranches);
+    
+    try {
+      await syncData('/api/branches', updatedBranches);
+    } catch (error) {
+      setBranches(previousBranches);
+    }
   };
 
   const handleDeleteBranch = async (id: string) => {
+    const previousBranches = [...branches];
+    const previousStaff = [...staff];
+    
     setBranches(prev => prev.filter(b => b.id !== id));
     setStaff(prev => prev.filter(s => s.branchId !== id));
-    await syncData('/api/branches', id, 'DELETE');
+    
+    try {
+      await syncData('/api/branches', id, 'DELETE');
+    } catch (error) {
+      setBranches(previousBranches);
+      setStaff(previousStaff);
+    }
   };
 
   const handleUpdateStaff = async (updatedStaff: Staff[]) => {
+    const previousStaff = [...staff];
     setStaff(updatedStaff);
-    await syncData('/api/staff', updatedStaff);
+    
+    try {
+      await syncData('/api/staff', updatedStaff);
+    } catch (error) {
+      setStaff(previousStaff);
+    }
   };
 
   const handleDeleteStaff = async (id: string) => {
+    const previousStaff = [...staff];
     setStaff(prev => prev.filter(s => s.id !== id));
-    await syncData('/api/staff', id, 'DELETE');
+    
+    try {
+      await syncData('/api/staff', id, 'DELETE');
+    } catch (error) {
+      setStaff(previousStaff);
+    }
   };
 
   const handleUpdateConfig = async (config: SystemConfig) => {
+    const previousConfig = { ...systemConfig };
     setSystemConfig(config);
-    await syncData('/api/config', config);
+    
+    try {
+      await syncData('/api/config', config);
+    } catch (error) {
+      setSystemConfig(previousConfig);
+    }
   };
 
   const handleLogin = (user: User) => {

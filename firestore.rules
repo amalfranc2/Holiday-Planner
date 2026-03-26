@@ -1,0 +1,171 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: branches
+    // Document ID: branchId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - location: string (required)
+    //   - showDashboardToStaff: bool (optional)
+    //
+    // Collection: staff
+    // Document ID: staffId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - category: string (required, enum: Kitchen, Counter, Manager)
+    //   - branchId: string (required)
+    //   - totalAllowance: number (required)
+    //   - email: string (optional, format: email)
+    //
+    // Collection: requests
+    // Document ID: requestId
+    // Fields:
+    //   - id: string (required)
+    //   - staffId: string (required)
+    //   - branchId: string (required)
+    //   - startDate: string (required, format: date-time)
+    //   - endDate: string (required, format: date-time)
+    //   - status: string (required, enum: Pending, Approved, Rejected, Withdrawn)
+    //   - notes: string (optional)
+    //   - createdAt: string (required, format: date-time)
+    //   - attachmentUrl: string (optional)
+    //   - attachmentId: string (optional)
+    //   - isUrgent: bool (optional)
+    //   - isStaffRequest: bool (optional)
+    //
+    // Collection: system
+    // Document ID: config
+    // Fields:
+    //   - primeTimeMonths: list (optional)
+    //   - defaultAllowance: number (optional)
+    //   - heatmapThresholds: map (optional)
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - id: string (required)
+    //   - username: string (required)
+    //   - role: string (required, enum: Manager, ADMIN, S-ADMIN, Staff)
+    //   - branchId: string (optional)
+    //   - name: string (required)
+    //   - email: string (optional, format: email)
+    //   - receiveNotifications: bool (optional)
+    //   - themeColor: string (optional)
+    //   - defaultView: string (optional)
+    //   - bubbleStyle: string (optional)
+    //   - showBubble: bool (optional)
+    //   - smoothScroll: bool (optional)
+    //   - showDashboardInfoTiles: bool (optional)
+    //   - chartPreferences: map (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['ADMIN', 'S-ADMIN'] ||
+          (request.auth.token.email == "amalfranc2@gmail.com" && request.auth.token.email_verified == true));
+    }
+    
+    function isManager() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Manager';
+    }
+    
+    function getManagerBranch() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidBranch(data) {
+      return data.keys().hasAll(['id', 'name', 'location']) &&
+             data.id is string && data.name is string && data.location is string &&
+             data.name.size() > 0 && data.name.size() < 100;
+    }
+
+    function isValidStaff(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'branchId', 'totalAllowance']) &&
+             data.id is string && data.name is string && data.branchId is string &&
+             data.category in ['Kitchen', 'Counter', 'Manager'] &&
+             data.totalAllowance is number && data.totalAllowance >= 0;
+    }
+
+    function isValidRequest(data) {
+      return data.keys().hasAll(['id', 'staffId', 'branchId', 'startDate', 'endDate', 'status', 'createdAt']) &&
+             data.id is string && data.staffId is string && data.branchId is string &&
+             isValidDateString(data.startDate) && isValidDateString(data.endDate) &&
+             data.status in ['Pending', 'Approved', 'Rejected', 'Withdrawn'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'username', 'role', 'name']) &&
+             data.id is string && data.username is string && data.name is string &&
+             data.role in ['Manager', 'ADMIN', 'S-ADMIN', 'Staff'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /branches/{branchId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /staff/{staffId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isManager() && getManagerBranch() == request.resource.data.branchId);
+    }
+
+    match /requests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRequest(request.resource.data);
+      allow update: if isAuthenticated() && isValidRequest(request.resource.data) &&
+                      (isAdmin() || 
+                       (isManager() && getManagerBranch() == resource.data.branchId) ||
+                       (resource.data.status == 'Pending' && request.resource.data.status == 'Withdrawn'));
+      allow delete: if isAdmin();
+    }
+
+    match /system/config {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                      (isOwner(userId) || isAdmin());
+    }
+  }
+}

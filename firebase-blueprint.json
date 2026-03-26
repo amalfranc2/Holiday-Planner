@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Branch": {
+      "title": "Branch",
+      "description": "A branch of the holiday planner system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "showDashboardToStaff": { "type": "boolean" }
+      },
+      "required": ["id", "name", "location"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "A staff member in the holiday planner system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Kitchen", "Counter", "Manager"] },
+        "branchId": { "type": "string" },
+        "totalAllowance": { "type": "number" },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["id", "name", "category", "branchId", "totalAllowance"]
+    },
+    "HolidayRequest": {
+      "title": "HolidayRequest",
+      "description": "A request for a holiday by a staff member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "staffId": { "type": "string" },
+        "branchId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected", "Withdrawn"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "attachmentUrl": { "type": "string" },
+        "attachmentId": { "type": "string" },
+        "isUrgent": { "type": "boolean" },
+        "isStaffRequest": { "type": "boolean" }
+      },
+      "required": ["id", "staffId", "branchId", "startDate", "endDate", "status", "createdAt"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global system configuration.",
+      "type": "object",
+      "properties": {
+        "primeTimeMonths": { "type": "array", "items": { "type": "integer" } },
+        "defaultAllowance": { "type": "number" },
+        "heatmapThresholds": {
+          "type": "object",
+          "properties": {
+            "low": { "type": "number" },
+            "medium": { "type": "number" },
+            "high": { "type": "number" },
+            "critical": { "type": "number" }
+          }
+        }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the holiday planner system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["Manager", "ADMIN", "S-ADMIN", "Staff"] },
+        "branchId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "receiveNotifications": { "type": "boolean" },
+        "themeColor": { "type": "string" },
+        "defaultView": { "type": "string", "enum": ["Dashboard", "Yearly"] },
+        "bubbleStyle": { "type": "string", "enum": ["classic", "arc"] },
+        "showBubble": { "type": "boolean" },
+        "smoothScroll": { "type": "boolean" },
+        "showDashboardInfoTiles": { "type": "boolean" },
+        "chartPreferences": {
+          "type": "object",
+          "properties": {
+            "availabilitySummary": { "type": "boolean" },
+            "pendingRequests": { "type": "boolean" },
+            "approvedRequests": { "type": "boolean" },
+            "categoryDistribution": { "type": "boolean" },
+            "branchVolume": { "type": "boolean" },
+            "riskHeatmap": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["id", "username", "role", "name"]
+    }
+  },
+  "firestore": {
+    "/branches/{branchId}": {
+      "schema": "Branch",
+      "description": "Collection of branches."
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Collection of staff members."
+    },
+    "/requests/{requestId}": {
+      "schema": "HolidayRequest",
+      "description": "Collection of holiday requests."
+    },
+    "/system/config": {
+      "schema": "SystemConfig",
+      "description": "Global system configuration document."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users."
+    }
+  }
+}

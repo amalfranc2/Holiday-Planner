@@ -1,36 +1,18 @@
 
 import React, { useState } from 'react';
-import { User } from '../types';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth } from '../firebase';
 
-interface LoginViewProps {
-  onLogin: (user: User) => void;
-}
-
-const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+const LoginView: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
     setError('');
-    
+    const provider = new GoogleAuthProvider();
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Invalid username or password');
-      }
-
-      const user = await response.json();
-      onLogin(user);
+      await signInWithPopup(auth, provider);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -49,61 +31,35 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           <p className="mt-2 text-sm text-gray-600">Holiday Planner Login</p>
         </div>
         
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <div className="mt-8 space-y-6">
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-medium border border-red-100 animate-shake">
               {error}
             </div>
           )}
           
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Username</label>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={isLoggingIn}
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50 disabled:opacity-50"
-                placeholder="Enter your username"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoggingIn}
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50 disabled:opacity-50"
-                placeholder="Enter your password"
-              />
-            </div>
-          </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoggingIn ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Signing in...</span>
-                </div>
-              ) : (
-                'Sign in'
-              )}
-            </button>
-          </div>
-        </form>
+          <button
+            onClick={handleGoogleLogin}
+            disabled={isLoggingIn}
+            className="group relative w-full flex justify-center items-center py-3 px-4 border border-gray-300 text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed gap-3"
+          >
+            {isLoggingIn ? (
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                <span>Signing in...</span>
+              </div>
+            ) : (
+              <>
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                <span>Sign in with Google</span>
+              </>
+            )}
+          </button>
+        </div>
         
         <div className="text-center mt-4">
           <p className="text-xs text-gray-400">
-            Contact your administrator if you've forgotten your password.
+            Contact your administrator if you're having trouble logging in.
           </p>
         </div>
       </div>

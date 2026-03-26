@@ -227,84 +227,19 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* Availability Summary Cards */}
-      {prefs.availabilitySummary !== false && (
-        currentUser.role !== 'Staff' || 
-        branches.find(b => b.id === currentBranchId)?.showDashboardToStaff !== false
-      ) && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-4 bg-primary-500 rounded-full"></div>
-              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-                {targetDate.toLocaleString('default', { month: 'long' })} Availability
-              </h3>
-            </div>
-            
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-              <button 
-                onClick={() => setSelectedMonthOffset(0)}
-                className={cn(
-                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
-                  selectedMonthOffset === 0 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                )}
-              >
-                {new Date().toLocaleString('default', { month: 'short' })}
-              </button>
-              <button 
-                onClick={() => setSelectedMonthOffset(1)}
-                className={cn(
-                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
-                  selectedMonthOffset === 1 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                )}
-              >
-                {new Date(currentYear, currentMonth + 1).toLocaleString('default', { month: 'short' })}
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {summaryHeatmapData.map(branch => {
-              const availability = 100 - branch.percentageAway;
-              
-              return (
-                <div key={branch.branchId} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate mr-2">{branch.branchName}</span>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      branch.riskLevel === 'critical' ? 'bg-rose-800' : 
-                      branch.riskLevel === 'high' ? 'bg-rose-400' : 
-                      branch.riskLevel === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
-                    )}></div>
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-lg font-black text-gray-800">{Math.round(availability)}%</span>
-                    <span className="text-[8px] font-bold text-gray-400 uppercase">Avail.</span>
-                  </div>
-                  <div className="mt-1.5 w-full bg-gray-50 h-1 rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        "h-full transition-all duration-1000",
-                        branch.riskLevel === 'critical' ? 'bg-rose-800' : 
-                        branch.riskLevel === 'high' ? 'bg-rose-400' : 
-                        branch.riskLevel === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
-                      )}
-                      style={{ width: `${availability}%` }}
-                    ></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Pending and Approved Requests - Moved here to be prominent for Admin */}
       {(prefs.pendingRequests !== false || prefs.approvedRequests !== false) && (
         currentUser.role !== 'Staff' || 
         branches.find(b => b.id === currentBranchId)?.showDashboardToStaff !== false
       ) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-1 h-4 bg-primary-500 rounded-full"></div>
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+              {dashboardFilter === 'year' ? 'Current Year' : 'Next 3 Months'} Requests
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {prefs.pendingRequests !== false && (
             <div id="pending-requests-section" className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 scroll-mt-24">
               <div className="flex items-center justify-between mb-4">
@@ -472,6 +407,79 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
               </div>
             </div>
           )}
+          </div>
+        </div>
+      )}
+
+      {/* Availability Summary Cards */}
+      {prefs.availabilitySummary !== false && (
+        currentUser.role !== 'Staff' || 
+        branches.find(b => b.id === currentBranchId)?.showDashboardToStaff !== false
+      ) && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-4 bg-primary-500 rounded-full"></div>
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+                {targetDate.toLocaleString('default', { month: 'long' })} Availability
+              </h3>
+            </div>
+            
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+              <button 
+                onClick={() => setSelectedMonthOffset(0)}
+                className={cn(
+                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
+                  selectedMonthOffset === 0 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {new Date().toLocaleString('default', { month: 'short' })}
+              </button>
+              <button 
+                onClick={() => setSelectedMonthOffset(1)}
+                className={cn(
+                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
+                  selectedMonthOffset === 1 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {new Date(currentYear, currentMonth + 1).toLocaleString('default', { month: 'short' })}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {summaryHeatmapData.map(branch => {
+              const availability = 100 - branch.percentageAway;
+              
+              return (
+                <div key={branch.branchId} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate mr-2">{branch.branchName}</span>
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      branch.riskLevel === 'critical' ? 'bg-rose-800' : 
+                      branch.riskLevel === 'high' ? 'bg-rose-400' : 
+                      branch.riskLevel === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
+                    )}></div>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-black text-gray-800">{Math.round(availability)}%</span>
+                    <span className="text-[8px] font-bold text-gray-400 uppercase">Avail.</span>
+                  </div>
+                  <div className="mt-1.5 w-full bg-gray-50 h-1 rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full transition-all duration-1000",
+                        branch.riskLevel === 'critical' ? 'bg-rose-800' : 
+                        branch.riskLevel === 'high' ? 'bg-rose-400' : 
+                        branch.riskLevel === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
+                      )}
+                      style={{ width: `${availability}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -485,7 +493,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
               <p className="text-xs text-gray-400 mb-6">Approved (Solid) vs Pending (Faded)</p>
               
               <div className="h-[280px] w-full relative">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <PieChart>
                     {/* Inner Ring: Categories */}
                     <Pie
@@ -582,7 +590,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
               </div>
               
               <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart
                     data={branchData}
                     layout="vertical"

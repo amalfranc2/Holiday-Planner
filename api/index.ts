@@ -117,7 +117,14 @@ async function initDb() {
         branch_id TEXT,
         name TEXT NOT NULL,
         email TEXT,
-        receive_notifications BOOLEAN DEFAULT FALSE
+        receive_notifications BOOLEAN DEFAULT FALSE,
+        theme_color TEXT,
+        default_view TEXT,
+        bubble_style TEXT,
+        show_bubble BOOLEAN DEFAULT TRUE,
+        smooth_scroll BOOLEAN DEFAULT TRUE,
+        show_dashboard_info_tiles BOOLEAN DEFAULT TRUE,
+        chart_preferences TEXT
       );
     `;
     await sql`
@@ -208,6 +215,13 @@ async function initDb() {
       await sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS email TEXT`;
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT`;
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_notifications BOOLEAN DEFAULT FALSE`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_color TEXT`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS default_view TEXT`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS bubble_style TEXT`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS show_bubble BOOLEAN DEFAULT TRUE`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS smooth_scroll BOOLEAN DEFAULT TRUE`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS show_dashboard_info_tiles BOOLEAN DEFAULT TRUE`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS chart_preferences TEXT`;
       await sql`ALTER TABLE smtp_config ADD COLUMN IF NOT EXISTS app_url TEXT NOT NULL DEFAULT ''`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_url TEXT`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_id TEXT`;
@@ -301,14 +315,33 @@ app.post("/api/login", async (req, res) => {
       return res.status(500).json({ error: "POSTGRES_URL is missing" });
     }
     const result = await sql`
-      SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" 
+      SELECT 
+        id, username, password, role, branch_id as "branchId", name, email, 
+        receive_notifications as "receiveNotifications",
+        theme_color as "themeColor",
+        default_view as "defaultView",
+        bubble_style as "bubbleStyle",
+        show_bubble as "showBubble",
+        smooth_scroll as "smoothScroll",
+        show_dashboard_info_tiles as "showDashboardInfoTiles",
+        chart_preferences as "chartPreferences"
       FROM users 
       WHERE username = ${username} AND password = ${password}
     `;
     if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
-    res.json(result.rows[0]);
+    
+    const user = result.rows[0];
+    if (user.chartPreferences) {
+      try {
+        user.chartPreferences = JSON.parse(user.chartPreferences);
+      } catch (e) {
+        user.chartPreferences = null;
+      }
+    }
+    
+    res.json(user);
   } catch (error: any) {
     console.error("Login error:", error.message);
     res.status(500).json({ error: "Failed to login" });
@@ -747,21 +780,47 @@ app.get("/api/users", async (req, res) => {
     const userBranchId = getHeader(req.headers['x-user-branch-id']);
     const userId = getHeader(req.headers['x-user-id']);
 
+    const selectClause = `
+      id, username, password, role, branch_id as "branchId", name, email, 
+      receive_notifications as "receiveNotifications",
+      theme_color as "themeColor",
+      default_view as "defaultView",
+      bubble_style as "bubbleStyle",
+      show_bubble as "showBubble",
+      smooth_scroll as "smoothScroll",
+      show_dashboard_info_tiles as "showDashboardInfoTiles",
+      chart_preferences as "chartPreferences"
+    `;
+
     let rows;
     if (userRole === 'Manager' && userBranchId) {
       // Managers can see users in their branch (including the branch staff user)
-      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users WHERE branch_id = ${userBranchId} OR role = 'S-ADMIN' OR role = 'ADMIN'`;
+      const result = await sql.query(`SELECT ${selectClause} FROM users WHERE branch_id = $1 OR role = 'S-ADMIN' OR role = 'ADMIN'`, [userBranchId]);
       rows = result.rows;
     } else if (userRole === 'Staff') {
       // Staff can only see themselves (though they usually don't access this)
-      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users WHERE id = ${userId}`;
+      const result = await sql.query(`SELECT ${selectClause} FROM users WHERE id = $1`, [userId]);
       rows = result.rows;
     } else {
-      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users`;
+      const result = await sql.query(`SELECT ${selectClause} FROM users`);
       rows = result.rows;
     }
-    res.json(rows);
+
+    // Parse chartPreferences for all rows
+    const parsedRows = rows.map(row => {
+      if (row.chartPreferences) {
+        try {
+          row.chartPreferences = JSON.parse(row.chartPreferences);
+        } catch (e) {
+          row.chartPreferences = null;
+        }
+      }
+      return row;
+    });
+
+    res.json(parsedRows);
   } catch (error) {
+    console.error("Fetch users error:", error);
     res.status(500).json({ error: "Failed to fetch users" });
   }
 });
@@ -803,9 +862,19 @@ app.post("/api/users", requireAdmin, async (req, res) => {
       // Prevent non-S-ADMIN from creating/updating S-ADMIN users
       if (!isSAdmin && u.role === 'S-ADMIN') continue;
 
+      const chartPrefs = u.chartPreferences ? JSON.stringify(u.chartPreferences) : null;
+
       await client.sql`
-        INSERT INTO users (id, username, password, role, branch_id, name, email, receive_notifications) 
-        VALUES (${u.id}, ${u.username}, ${u.password}, ${u.role}, ${u.branchId}, ${u.name}, ${u.email}, ${u.receiveNotifications})
+        INSERT INTO users (
+          id, username, password, role, branch_id, name, email, receive_notifications,
+          theme_color, default_view, bubble_style, show_bubble, smooth_scroll, 
+          show_dashboard_info_tiles, chart_preferences
+        ) 
+        VALUES (
+          ${u.id}, ${u.username}, ${u.password}, ${u.role}, ${u.branchId}, ${u.name}, ${u.email}, ${u.receiveNotifications},
+          ${u.themeColor}, ${u.defaultView}, ${u.bubbleStyle}, ${u.showBubble ?? true}, ${u.smoothScroll ?? true},
+          ${u.showDashboardInfoTiles ?? true}, ${chartPrefs}
+        )
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           password = EXCLUDED.password,
@@ -813,7 +882,14 @@ app.post("/api/users", requireAdmin, async (req, res) => {
           branch_id = EXCLUDED.branch_id,
           name = EXCLUDED.name,
           email = EXCLUDED.email,
-          receive_notifications = EXCLUDED.receive_notifications
+          receive_notifications = EXCLUDED.receive_notifications,
+          theme_color = EXCLUDED.theme_color,
+          default_view = EXCLUDED.default_view,
+          bubble_style = EXCLUDED.bubble_style,
+          show_bubble = EXCLUDED.show_bubble,
+          smooth_scroll = EXCLUDED.smooth_scroll,
+          show_dashboard_info_tiles = EXCLUDED.show_dashboard_info_tiles,
+          chart_preferences = EXCLUDED.chart_preferences
       `;
     }
 
