@@ -369,7 +369,9 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
                               <div 
                                 key={r.id}
                                 onClick={(e) => onRequestClick(e, r)}
-                                className={`text-[9px] xl:text-[10px] p-1 xl:p-1.5 rounded border transition-all truncate group relative ${
+                                className={`text-[9px] xl:text-[10px] p-1 xl:p-1.5 rounded border transition-all truncate group relative flex items-center gap-1 ${
+                                  r.isUrgent ? 'ring-2 ring-red-500 ring-offset-1 z-10' : ''
+                                } ${
                                   r.status === 'Approved' 
                                     ? 'bg-emerald-100 border-emerald-200 text-emerald-800' 
                                     : r.status === 'Rejected'
@@ -379,8 +381,16 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
                                     : 'bg-amber-100 border-amber-200 text-amber-800 opacity-80'
                                 } hover:scale-105 hover:shadow-sm`}
                               >
-                                <span className="font-bold">[{sMember?.category[0]}]</span> {sMember?.name}
-                                {currentBranchId === 'all' && !isMobile && <div className="text-[7px] xl:text-[8px] opacity-70">{branch?.name}</div>}
+                                {r.isUrgent && (
+                                  <i className="fa-solid fa-circle-exclamation text-red-600 animate-pulse shrink-0"></i>
+                                )}
+                                {r.isStaffRequest && (
+                                  <i className="fa-solid fa-user-tag text-purple-600 shrink-0" title="Staff Request"></i>
+                                )}
+                                <div className="truncate">
+                                  <span className="font-bold">[{sMember?.category[0]}]</span> {sMember?.name}
+                                  {currentBranchId === 'all' && !isMobile && <div className="text-[7px] xl:text-[8px] opacity-70">{branch?.name}</div>}
+                                </div>
                               </div>
                             );
                           })}
@@ -523,9 +533,13 @@ const YearlyCalendar: React.FC<YearlyCalendarProps> = ({
                           {req && (
                             <div 
                               onClick={(e) => onRequestClick(e, req)}
-                              className={`w-full h-full ${bgColor} opacity-80 hover:opacity-100 transition-opacity`}
-                              title={`${s.name}: ${req.status}`}
-                            />
+                              className={`w-full h-full ${bgColor} opacity-80 hover:opacity-100 transition-opacity relative flex items-center justify-center`}
+                              title={`${s.name}: ${req.status}${req.isUrgent ? ' (URGENT)' : ''}`}
+                            >
+                              {req.isUrgent && (
+                                <div className="w-1.5 h-1.5 bg-white rounded-full shadow-sm animate-pulse" />
+                              )}
+                            </div>
                           )}
                         </td>
                       );

@@ -18,7 +18,7 @@ const INITIAL_ADMIN: User = {
   id: 'admin-1',
   username: 'admin',
   password: 'password123',
-  role: 'HeadOffice',
+  role: 'S-ADMIN',
   name: 'Head Office Admin',
   defaultView: 'Dashboard',
   bubbleStyle: 'arc'
@@ -94,30 +94,64 @@ const App: React.FC = () => {
   // API Persistence
   useEffect(() => {
     const fetchData = async () => {
+      // Only fetch if data is not loaded and we have a user (either in state or localStorage)
+      const savedSession = localStorage.getItem('holiday_session');
+      if (dataLoaded || (!currentUser && !savedSession)) {
+        setLoading(false); // Ensure loading is false if no user is found
+        return;
+      }
+
+      setLoading(true);
       try {
         const fetchJson = async (url: string) => {
-          const r = await fetch(url);
-          const contentType = r.headers.get("content-type");
-          
-          if (!r.ok || !contentType || !contentType.includes("application/json")) {
-            const text = await r.text();
-            let errorMsg = `Server Error (${r.status})`;
-            
-            try {
-              const data = JSON.parse(text);
-              errorMsg = data.error || errorMsg;
-            } catch (e) {
-              if (text.includes("POSTGRES_URL")) {
-                errorMsg = "Database connection failed: POSTGRES_URL is missing in environment variables.";
-              } else if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
-                errorMsg = `Backend returned an HTML page instead of JSON. This usually means the server failed to start or a route is misconfigured. Status: ${r.status}`;
-              } else {
-                errorMsg = text.slice(0, 100) || errorMsg;
-              }
-            }
-            throw new Error(errorMsg);
+          const sessionUser = currentUser || (savedSession ? JSON.parse(savedSession) : null);
+          const headers: HeadersInit = {};
+          if (sessionUser?.role) {
+            headers['x-user-role'] = sessionUser.role;
           }
-          return await r.json();
+          if (sessionUser?.branchId) {
+            headers['x-user-branch-id'] = sessionUser.branchId;
+          }
+
+          // Add a 10-second timeout to the fetch call
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+          try {
+            const r = await fetch(url, { 
+              headers,
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            const contentType = r.headers.get("content-type");
+            
+            if (!r.ok || !contentType || !contentType.includes("application/json")) {
+              const text = await r.text();
+              let errorMsg = `Server Error (${r.status})`;
+              
+              try {
+                const data = JSON.parse(text);
+                errorMsg = data.error || errorMsg;
+              } catch (e) {
+                if (text.includes("POSTGRES_URL")) {
+                  errorMsg = "Database connection failed: POSTGRES_URL is missing in environment variables.";
+                } else if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
+                  errorMsg = `Backend returned an HTML page instead of JSON. Status: ${r.status}`;
+                } else {
+                  errorMsg = text.slice(0, 100) || errorMsg;
+                }
+              }
+              throw new Error(errorMsg);
+            }
+            return await r.json();
+          } catch (err: any) {
+            clearTimeout(timeoutId);
+            if (err.name === 'AbortError') {
+              throw new Error("Request timed out. The server might be struggling to connect to the database.");
+            }
+            throw err;
+          }
         };
 
         const [resHealth, resBranches, resStaff, resRequests, resUsers, resConfig] = await Promise.all([
@@ -129,32 +163,40 @@ const App: React.FC = () => {
           fetchJson('/api/config')
         ]);
 
+        // Check health for explicit DB error
+        if (resHealth && !resHealth.dbConnected && resHealth.dbError) {
+          setDbError(`Database Connection Failed: ${resHealth.dbError}`);
+          return;
+        }
+
         // If all core fetches returned null, the DB is likely not connected
         if (resBranches === null && resStaff === null && resRequests === null) {
           setDbError("Could not connect to the database. Please check your POSTGRES_URL in the .env file.");
           return; // Stop here if we can't connect
         }
 
-        if (Array.isArray(resBranches) && resBranches.length > 0) setBranches(resBranches);
-        if (Array.isArray(resStaff) && resStaff.length > 0) setStaff(resStaff);
+        if (Array.isArray(resBranches)) setBranches(resBranches);
+        if (Array.isArray(resStaff)) setStaff(resStaff);
         if (Array.isArray(resRequests)) setRequests(resRequests);
-        if (Array.isArray(resUsers) && resUsers.length > 0) setUsers(resUsers);
+        if (Array.isArray(resUsers)) setUsers(resUsers);
         if (resConfig && !resConfig.error) setSystemConfig(resConfig);
 
-        const savedSession = localStorage.getItem('holiday_session');
-        if (savedSession) {
+        if (savedSession && !currentUser) {
           const sessionUser = JSON.parse(savedSession);
           setCurrentUser(sessionUser);
           setViewType(sessionUser.defaultView || 'Dashboard');
-          if (sessionUser.role === 'HeadOffice') {
+          if (sessionUser.role === 'S-ADMIN' || sessionUser.role === 'ADMIN') {
             setCurrentBranchId('all');
           } else if (sessionUser.role === 'Manager' && sessionUser.branchId) {
             setCurrentBranchId(sessionUser.branchId);
+          } else if (sessionUser.role === 'Staff') {
+            setCurrentBranchId('all');
           }
         }
         
         // Success! Unlock syncing
         setDataLoaded(true);
+        setDbError(null);
       } catch (error: any) {
         console.error("Failed to fetch data from API", error);
         setDbError(error.message || "An unexpected error occurred while connecting to the database.");
@@ -164,59 +206,31 @@ const App: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, [dataLoaded, currentUser]);
 
-  const syncData = async (endpoint: string, data: any) => {
-    if (!dataLoaded) return; // Safety lock: don't sync if we haven't loaded yet
+  const syncData = async (endpoint: string, data: any, method: 'POST' | 'DELETE' = 'POST') => {
+    if (!dataLoaded || !currentUser) return;
     try {
-      await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+      const url = method === 'DELETE' ? `${endpoint}/${data}` : endpoint;
+      const body = method === 'DELETE' ? undefined : JSON.stringify(data);
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser.role,
+          'x-user-id': currentUser.id,
+          'x-user-branch-id': currentUser.branchId || ''
+        },
+        body
       });
+      if (!res.ok) throw new Error(`Failed to sync to ${url}`);
     } catch (error) {
       console.error(`Failed to sync data to ${endpoint}`, error);
     }
   };
 
-  useEffect(() => {
-    if (!loading) syncData('/api/requests', requests);
-  }, [requests, loading]);
-
-  useEffect(() => {
-    if (!loading) syncData('/api/branches', branches);
-  }, [branches, loading]);
-
-  useEffect(() => {
-    if (!loading) syncData('/api/staff', staff);
-  }, [staff, loading]);
-
-  useEffect(() => {
-    if (!loading) syncData('/api/users', users);
-  }, [users, loading]);
-
-  useEffect(() => {
-    if (!loading) syncData('/api/config', systemConfig);
-  }, [systemConfig, loading]);
-
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    setViewType(user.defaultView || 'Dashboard');
-    localStorage.setItem('holiday_session', JSON.stringify(user));
-    if (user.role === 'HeadOffice') {
-      setCurrentBranchId('all');
-    } else if (user.role === 'Manager' && user.branchId) {
-      setCurrentBranchId(user.branchId);
-    }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('holiday_session');
-    setCurrentView('Calendar');
-  };
-
-  const handleAddRequest = (data: Partial<HolidayRequest>) => {
+  const handleAddRequest = async (data: Partial<HolidayRequest>) => {
     const newReq: HolidayRequest = {
       ...data,
       id: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -224,18 +238,26 @@ const App: React.FC = () => {
       createdAt: new Date().toISOString()
     } as HolidayRequest;
     setRequests(prev => [...prev, newReq]);
+    await syncData('/api/requests', [newReq]);
   };
 
-  const handleUpdateRequest = (data: Partial<HolidayRequest>) => {
+  const handleUpdateRequest = async (data: Partial<HolidayRequest>) => {
     setRequests(prev => prev.map(r => r.id === data.id ? { ...r, ...data } : r));
+    const updatedReq = requests.find(r => r.id === data.id);
+    if (updatedReq) {
+      await syncData('/api/requests', [{ ...updatedReq, ...data }]);
+    }
   };
 
-  const handleDeleteRequest = (id: string) => {
+  const handleDeleteRequest = async (id: string) => {
     setRequests(prev => prev.filter(r => r.id !== id));
+    await syncData('/api/requests', id, 'DELETE');
   };
 
-  const handleUpdateUsers = (updatedUsers: User[]) => {
+  const handleUpdateUsers = async (updatedUsers: User[]) => {
     setUsers(updatedUsers);
+    await syncData('/api/users', updatedUsers);
+    
     if (currentUser) {
       const updatedMe = updatedUsers.find(u => u.id === currentUser.id);
       if (updatedMe) {
@@ -243,6 +265,58 @@ const App: React.FC = () => {
         localStorage.setItem('holiday_session', JSON.stringify(updatedMe));
       }
     }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    setUsers(prev => prev.filter(u => u.id !== id));
+    await syncData('/api/users', id, 'DELETE');
+  };
+
+  const handleUpdateBranches = async (updatedBranches: Branch[]) => {
+    setBranches(updatedBranches);
+    await syncData('/api/branches', updatedBranches);
+  };
+
+  const handleDeleteBranch = async (id: string) => {
+    setBranches(prev => prev.filter(b => b.id !== id));
+    setStaff(prev => prev.filter(s => s.branchId !== id));
+    await syncData('/api/branches', id, 'DELETE');
+  };
+
+  const handleUpdateStaff = async (updatedStaff: Staff[]) => {
+    setStaff(updatedStaff);
+    await syncData('/api/staff', updatedStaff);
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    setStaff(prev => prev.filter(s => s.id !== id));
+    await syncData('/api/staff', id, 'DELETE');
+  };
+
+  const handleUpdateConfig = async (config: SystemConfig) => {
+    setSystemConfig(config);
+    await syncData('/api/config', config);
+  };
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    setViewType(user.defaultView || 'Dashboard');
+    localStorage.setItem('holiday_session', JSON.stringify(user));
+    if (user.role === 'S-ADMIN' || user.role === 'ADMIN') {
+      setCurrentBranchId('all');
+    } else if ((user.role === 'Manager' || user.role === 'Staff') && user.branchId) {
+      setCurrentBranchId(user.branchId);
+    } else {
+      setCurrentBranchId('all');
+    }
+    setDataLoaded(false); // Trigger re-fetch with new role headers
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('holiday_session');
+    setCurrentView('Calendar');
+    setDataLoaded(false); // Trigger re-fetch of full users list for next login
   };
 
   if (loading) {
@@ -289,7 +363,7 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <LoginView onLogin={handleLogin} users={users} />;
+    return <LoginView onLogin={handleLogin} />;
   }
 
   return (
@@ -337,10 +411,13 @@ const App: React.FC = () => {
           staff={staff}
           users={users}
           systemConfig={systemConfig}
-          onUpdateBranches={setBranches}
-          onUpdateStaff={setStaff}
+          onUpdateBranches={handleUpdateBranches}
+          onDeleteBranch={handleDeleteBranch}
+          onUpdateStaff={handleUpdateStaff}
+          onDeleteStaff={handleDeleteStaff}
           onUpdateUsers={handleUpdateUsers}
-          onUpdateConfig={setSystemConfig}
+          onDeleteUser={handleDeleteUser}
+          onUpdateConfig={handleUpdateConfig}
         />
       )}
     </Layout>

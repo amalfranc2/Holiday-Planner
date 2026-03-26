@@ -2,6 +2,13 @@
 import React, { useState } from 'react';
 import { Branch, Staff, UserRole, StaffCategory, User, SystemConfig } from '../types';
 import { CATEGORIES, THEMES } from '../constants';
+import ConfirmationModal from './ConfirmationModal';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface SettingsViewProps {
   role: UserRole;
@@ -12,8 +19,11 @@ interface SettingsViewProps {
   users: User[];
   systemConfig: SystemConfig;
   onUpdateBranches: (branches: Branch[]) => void;
+  onDeleteBranch: (id: string) => void;
   onUpdateStaff: (staff: Staff[]) => void;
+  onDeleteStaff: (id: string) => void;
   onUpdateUsers: (users: User[]) => void;
+  onDeleteUser: (id: string) => void;
   onUpdateConfig: (config: SystemConfig) => void;
 }
 
@@ -26,8 +36,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   users,
   systemConfig,
   onUpdateBranches,
+  onDeleteBranch,
   onUpdateStaff,
+  onDeleteStaff,
   onUpdateUsers,
+  onDeleteUser,
   onUpdateConfig,
 }) => {
   const thresholds = systemConfig.heatmapThresholds || { low: 10, medium: 20, high: 30, critical: 45 };
@@ -43,7 +56,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingBranch, setEditingBranch] = useState<Partial<Branch> | null>(null);
   const [editingStaff, setEditingStaff] = useState<Partial<Staff> | null>(null);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
-  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config'>(role === 'HeadOffice' ? 'Branches' : 'Staff');
+  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config'>(role === 'S-ADMIN' || role === 'ADMIN' ? 'Branches' : 'Staff');
   
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -63,7 +76,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     app_url: ''
   });
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [showSmtpHost, setShowSmtpHost] = useState(false);
+  const [showSmtpUser, setShowSmtpUser] = useState(false);
+  const [showSmtpFrom, setShowSmtpFrom] = useState(false);
+  const [showSmtpAppUrl, setShowSmtpAppUrl] = useState(false);
+  const [showSmtpPort, setShowSmtpPort] = useState(false);
   const [smtpSaveMessage, setSmtpSaveMessage] = useState({ text: '', type: '' });
+  const [driveSaveMessage, setDriveSaveMessage] = useState({ text: '', type: '' });
   const [driveStatus, setDriveStatus] = useState<{ configured: boolean, folderIdSet: boolean, verified: boolean, error: string | null, serviceAccountEmail?: string } | null>(null);
   const [driveConfig, setDriveConfig] = useState({
     client_email: '',
@@ -71,13 +90,56 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     folder_id: ''
   });
   const [showDriveKey, setShowDriveKey] = useState(false);
-  const [driveSaveMessage, setDriveSaveMessage] = useState({ text: '', type: '' });
+  const [showDriveEmail, setShowDriveEmail] = useState(false);
+  const [showDriveFolder, setShowDriveFolder] = useState(false);
+  const [showProfileEmail, setShowProfileEmail] = useState(false);
+  const [branchStaffPasswords, setBranchStaffPasswords] = useState<{ branchName: string, username: string, password: string }[]>([]);
+  const [loadingPasswords, setLoadingPasswords] = useState(false);
+  const [isBranchStaffAccessExpanded, setIsBranchStaffAccessExpanded] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
-  const isAdmin = role === 'HeadOffice';
+  const fetchBranchStaffPasswords = async () => {
+    setLoadingPasswords(true);
+    try {
+      const res = await fetch('/api/branch-staff-passwords', {
+        headers: { 'x-user-role': role, 'x-user-branch-id': currentBranchId }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBranchStaffPasswords(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch branch staff passwords');
+    } finally {
+      setLoadingPasswords(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'Profile' && (role === 'Manager' || role === 'S-ADMIN' || role === 'ADMIN')) {
+      fetchBranchStaffPasswords();
+    }
+  }, [activeTab, role]);
+  const isSAdmin = role === 'S-ADMIN';
+  const isAdmin = role === 'ADMIN' || role === 'S-ADMIN';
 
   const fetchDriveStatus = async () => {
     try {
-      const res = await fetch('/api/drive-status');
+      const res = await fetch('/api/drive-status', {
+        headers: { 'x-user-role': role }
+      });
       const data = await res.json();
       setDriveStatus(data);
     } catch (err) {
@@ -87,7 +149,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const fetchDriveConfig = async () => {
     try {
-      const res = await fetch('/api/drive-config');
+      const res = await fetch('/api/drive-config', {
+        headers: { 'x-user-role': role }
+      });
       const data = await res.json();
       if (data.client_email || data.folder_id) setDriveConfig(data);
     } catch (err) {
@@ -101,7 +165,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const res = await fetch('/api/drive-config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-role': role
+        },
         body: JSON.stringify(driveConfig)
       });
       if (res.ok) {
@@ -118,7 +185,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const fetchSmtpConfig = async () => {
     try {
-      const res = await fetch('/api/smtp-config');
+      const res = await fetch('/api/smtp-config', {
+        headers: { 'x-user-role': role }
+      });
       const data = await res.json();
       if (data.host) setSmtpConfig(data);
     } catch (err) {
@@ -132,7 +201,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const res = await fetch('/api/smtp-config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-role': role
+        },
         body: JSON.stringify(smtpConfig)
       });
       if (res.ok) {
@@ -149,7 +221,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const fetchEmailStatus = async () => {
     try {
-      const res = await fetch('/api/email-status');
+      const res = await fetch('/api/email-status', {
+        headers: { 'x-user-role': role }
+      });
       const data = await res.json();
       setEmailStatus(data);
     } catch (err) {
@@ -165,7 +239,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const res = await fetch('/api/test-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-role': role
+        },
         body: JSON.stringify({ email: testEmail })
       });
       const data = await res.json();
@@ -183,12 +260,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   React.useEffect(() => {
     fetchEmailStatus();
-    if (isAdmin) {
+    if (isSAdmin) {
       fetchSmtpConfig();
       fetchDriveConfig();
       fetchDriveStatus();
     }
-  }, [isAdmin]);
+  }, [isSAdmin]);
 
   const handlePasswordChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,7 +289,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   // User Handlers (Admin Only)
   const handleSaveUser = () => {
     if (!editingUser?.username || !editingUser?.password || !editingUser?.name || !editingUser?.role) return;
-    if (editingUser.role === 'Manager' && !editingUser.branchId) return;
+    if ((editingUser.role === 'Manager' || editingUser.role === 'Staff') && !editingUser.branchId) return;
 
     if (editingUser.id) {
       onUpdateUsers(users.map(u => u.id === editingUser.id ? { ...u, ...editingUser } as User : u));
@@ -229,12 +306,41 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleDeleteUser = (id: string) => {
     if (id === currentUser.id) {
-      alert("You cannot delete your own account.");
+      setConfirmModal({
+        show: true,
+        title: 'Action Not Allowed',
+        message: 'You cannot delete your own account.',
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, show: false })),
+        type: 'warning'
+      });
       return;
     }
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      onUpdateUsers(users.filter(u => u.id !== id));
+    const targetUser = users.find(u => u.id === id);
+    if (!targetUser) return;
+
+    const canDelete = isSAdmin || (role === 'ADMIN' && (targetUser.role === 'Manager' || targetUser.role === 'Staff'));
+    
+    if (!canDelete) {
+      setConfirmModal({
+        show: true,
+        title: 'Permission Denied',
+        message: 'You do not have permission to delete this user.',
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, show: false })),
+        type: 'warning'
+      });
+      return;
     }
+
+    setConfirmModal({
+      show: true,
+      title: 'Delete User',
+      message: 'Are you sure you want to delete this user? This action cannot be undone.',
+      onConfirm: () => {
+        onDeleteUser(id);
+        setConfirmModal(prev => ({ ...prev, show: false }));
+      },
+      type: 'danger'
+    });
   };
 
   // Branch Handlers (Admin Only)
@@ -248,6 +354,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         id: `br-${Date.now()}`,
         name: editingBranch.name,
         location: editingBranch.location || '',
+        showDashboardToStaff: editingBranch.showDashboardToStaff ?? true,
       };
       onUpdateBranches([...branches, newBranch]);
     }
@@ -255,10 +362,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleDeleteBranch = (id: string) => {
-    if (window.confirm('Are you sure? This will also remove all staff associated with this branch.')) {
-      onUpdateBranches(branches.filter(b => b.id !== id));
-      onUpdateStaff(staff.filter(s => s.branchId !== id));
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Delete Branch',
+      message: 'Are you sure? This will also remove all staff associated with this branch.',
+      onConfirm: () => {
+        onDeleteBranch(id);
+        setConfirmModal(prev => ({ ...prev, show: false }));
+      },
+      type: 'danger'
+    });
   };
 
   // Staff Handlers
@@ -282,9 +395,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleDeleteStaff = (id: string) => {
-    if (window.confirm('Delete this staff member?')) {
-      onUpdateStaff(staff.filter(s => s.id !== id));
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Delete Staff',
+      message: 'Delete this staff member? This will also remove all their holiday requests.',
+      onConfirm: () => {
+        onDeleteStaff(id);
+        setConfirmModal(prev => ({ ...prev, show: false }));
+      },
+      type: 'danger'
+    });
   };
 
   const filteredStaff = isAdmin 
@@ -313,18 +433,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 >
                   Users
                 </button>
-                <button 
-                  onClick={() => setActiveTab('System')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                >
-                  System
-                </button>
-                <button 
-                  onClick={() => setActiveTab('Config')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                >
-                  Config
-                </button>
+                {isSAdmin && (
+                  <>
+                    <button 
+                      onClick={() => setActiveTab('System')}
+                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                    >
+                      System
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('Config')}
+                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                    >
+                      Config
+                    </button>
+                  </>
+                )}
               </>
             )}
             <button 
@@ -342,7 +466,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {activeTab === 'System' && isAdmin && (
+        {activeTab === 'System' && isSAdmin && (
           <div className="max-w-2xl mx-auto space-y-8 py-4">
             <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-6">
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -532,7 +656,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
-              <h4 className="font-bold text-gray-700 mb-2">Default Application View</h4>
               <p className="text-[10px] text-gray-500 mb-4">Choose which view you see first when logging in.</p>
               <div className="flex bg-white p-1 rounded-xl border border-gray-200">
                 <button
@@ -612,6 +735,75 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   Arc
                 </button>
               </div>
+
+              <div className="flex items-center justify-between py-2 mt-4 border-t border-gray-200 pt-4">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Smooth Scrolling</p>
+                  <p className="text-[10px] text-gray-500">Enable smooth animation when scrolling to the current month.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, smoothScroll: currentUser.smoothScroll === false ? true : false } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.smoothScroll !== false ? 'bg-primary-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.smoothScroll !== false ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-2 mt-4 border-t border-gray-200 pt-4">
+                <div>
+                  <p className="text-sm font-bold text-gray-700">Dashboard Info Tiles</p>
+                  <p className="text-[10px] text-gray-500">Enable the summary tiles at the top of the dashboard.</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, showDashboardInfoTiles: currentUser.showDashboardInfoTiles === false ? true : false } : u);
+                    onUpdateUsers(updatedUsers);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.showDashboardInfoTiles !== false ? 'bg-primary-600' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.showDashboardInfoTiles !== false ? 'left-7' : 'left-1'}`}></div>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+              <h4 className="font-bold text-gray-700 mb-2">Dashboard Chart Visibility</h4>
+              <p className="text-[10px] text-gray-500 mb-4">Choose which charts are visible on your dashboard.</p>
+              
+              {[
+                { id: 'availabilitySummary', label: 'Availability Summary', desc: 'Monthly availability cards for each branch.' },
+                { id: 'pendingRequests', label: 'Pending Requests', desc: 'List of requests awaiting approval.' },
+                { id: 'approvedRequests', label: 'Approved Requests', desc: 'List of confirmed holiday requests.' },
+                { id: 'categoryDistribution', label: 'Category Distribution', desc: 'Donut chart showing requests by staff category.' },
+                { id: 'branchVolume', label: 'Branch Volume', desc: 'Bar chart showing request volume per branch.' },
+                { id: 'riskHeatmap', label: 'Risk Heatmap', desc: 'Heatmap showing staff absence risk by month.' }
+              ].map((chart, idx) => (
+                <div key={chart.id} className={`flex items-center justify-between py-2 ${idx !== 0 ? 'border-t border-gray-200 pt-4' : ''}`}>
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">{chart.label}</p>
+                    <p className="text-[10px] text-gray-500">{chart.desc}</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const currentPrefs = currentUser.chartPreferences || {};
+                      const updatedUsers = users.map(u => u.id === currentUser.id ? { 
+                        ...u, 
+                        chartPreferences: { 
+                          ...currentPrefs, 
+                          [chart.id]: currentPrefs[chart.id as keyof typeof currentPrefs] === false ? true : false 
+                        } 
+                      } : u);
+                      onUpdateUsers(updatedUsers);
+                    }}
+                    className={`w-12 h-6 rounded-full transition-all relative ${ (currentUser.chartPreferences?.[chart.id as keyof typeof currentUser.chartPreferences] !== false) ? 'bg-primary-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${ (currentUser.chartPreferences?.[chart.id as keyof typeof currentUser.chartPreferences] !== false) ? 'left-7' : 'left-1'}`}></div>
+                  </button>
+                </div>
+              ))}
             </div>
 
             <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
@@ -654,16 +846,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <h4 className="font-bold text-gray-700 mb-2">Notification Preferences</h4>
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email Address</label>
-                <input 
-                  type="email" 
-                  value={currentUser.email || ''}
-                  onChange={e => {
-                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, email: e.target.value } : u);
-                    onUpdateUsers(updatedUsers);
-                  }}
-                  className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="your@email.com"
-                />
+                <div className="relative">
+                  <input 
+                    type={showProfileEmail ? "text" : "password"} 
+                    value={currentUser.email || ''}
+                    onChange={e => {
+                      const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, email: e.target.value } : u);
+                      onUpdateUsers(updatedUsers);
+                    }}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                    placeholder="your@email.com"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowProfileEmail(!showProfileEmail)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                  >
+                    <i className={`fa-solid ${showProfileEmail ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                  </button>
+                </div>
               </div>
               <div className="flex items-center justify-between py-2">
                 <div>
@@ -678,21 +879,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   className={`w-12 h-6 rounded-full transition-all relative ${currentUser.receiveNotifications ? 'bg-primary-600' : 'bg-gray-300'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.receiveNotifications ? 'left-7' : 'left-1'}`}></div>
-                </button>
-              </div>
-              <div className="flex items-center justify-between py-2 mt-4 border-t border-gray-100 pt-4">
-                <div>
-                  <p className="text-sm font-bold text-gray-700">Smooth Scrolling</p>
-                  <p className="text-[10px] text-gray-500">Enable smooth animation when scrolling to the current month.</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, smoothScroll: currentUser.smoothScroll === false ? true : false } : u);
-                    onUpdateUsers(updatedUsers);
-                  }}
-                  className={`w-12 h-6 rounded-full transition-all relative ${currentUser.smoothScroll !== false ? 'bg-primary-600' : 'bg-gray-300'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${currentUser.smoothScroll !== false ? 'left-7' : 'left-1'}`}></div>
                 </button>
               </div>
             </div>
@@ -736,6 +922,62 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 Password changes must be requested through the Head Office administrator.
               </div>
             )}
+
+            {(role === 'Manager' || isAdmin) && (
+              <div className="space-y-4 bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+                <button 
+                  onClick={() => setIsBranchStaffAccessExpanded(!isBranchStaffAccessExpanded)}
+                  className="w-full flex justify-between items-center group"
+                >
+                  <h4 className="font-bold text-gray-700 flex items-center gap-2">
+                    <i className="fa-solid fa-users-gear text-primary-600"></i>
+                    Branch Staff Access
+                  </h4>
+                  <i className={`fa-solid fa-chevron-down transition-transform duration-300 text-gray-400 group-hover:text-primary-600 ${isBranchStaffAccessExpanded ? 'rotate-180' : ''}`}></i>
+                </button>
+                
+                {isBranchStaffAccessExpanded && (
+                  <div className="pt-4 border-t border-gray-200 animate-in slide-in-from-top-2 duration-300">
+                    <p className="text-[10px] text-gray-500 mb-4">
+                      These are the shared credentials for staff members to access the planner for their branch. 
+                      Passwords rotate automatically on the 1st of every month.
+                    </p>
+                    
+                    {loadingPasswords ? (
+                      <div className="flex justify-center py-4">
+                        <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    ) : branchStaffPasswords.length > 0 ? (
+                      <div className="space-y-3">
+                        {branchStaffPasswords.map((bp, idx) => (
+                          <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-[10px] font-bold text-primary-600 uppercase tracking-wider">{bp.branchName}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Username</label>
+                                <div className="bg-gray-50 px-3 py-2 rounded-lg text-xs font-mono text-gray-700 border border-gray-100 select-all">
+                                  {bp.username}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Password</label>
+                                <div className="bg-gray-50 px-3 py-2 rounded-lg text-xs font-mono text-gray-700 border border-gray-100 select-all">
+                                  {bp.password}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic text-center py-4">No branch staff users found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -763,24 +1005,30 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {users.map(u => (
+                  {users
+                    .filter(u => isSAdmin || u.role !== 'S-ADMIN')
+                    .map(u => (
                     <tr key={u.id} className="hover:bg-gray-50 transition-colors group">
                       <td className="p-4 text-sm font-medium text-gray-800">{u.name}</td>
                       <td className="p-4 text-sm text-gray-600">{u.username}</td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${
-                          u.role === 'HeadOffice' ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-700'
+                          u.role === 'S-ADMIN' ? 'bg-purple-100 text-purple-700' :
+                          u.role === 'ADMIN' ? 'bg-primary-100 text-primary-700' : 
+                          'bg-gray-100 text-gray-700'
                         }`}>
                           {u.role}
                         </span>
                       </td>
                       <td className="p-4 text-sm text-gray-600">
-                        {u.role === 'Manager' ? (branches.find(b => b.id === u.branchId)?.name || 'None') : 'N/A'}
+                        {(u.role === 'Manager' || u.role === 'Staff') ? (branches.find(b => b.id === u.branchId)?.name || 'None') : 'N/A'}
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setEditingUser(u)} className="p-2 text-gray-400 hover:text-primary-600"><i className="fa-solid fa-pen"></i></button>
-                          <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-gray-400 hover:text-red-600"><i className="fa-solid fa-trash"></i></button>
+                          {(isSAdmin && u.id !== currentUser.id) || (role === 'ADMIN' && (u.role === 'Manager' || u.role === 'Staff')) ? (
+                            <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-gray-400 hover:text-red-600"><i className="fa-solid fa-trash"></i></button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -844,32 +1092,59 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Host</label>
-                  <input 
-                    type="text" 
-                    value={smtpConfig.host}
-                    onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="smtp.hostinger.com"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showSmtpHost ? "text" : "password"} 
+                      value={smtpConfig.host}
+                      onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="smtp.hostinger.com"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpHost(!showSmtpHost)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showSmtpHost ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Port</label>
-                  <input 
-                    type="number" 
-                    value={smtpConfig.port}
-                    onChange={e => setSmtpConfig({...smtpConfig, port: parseInt(e.target.value) || 0})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showSmtpPort ? "text" : "password"} 
+                      value={smtpConfig.port}
+                      onChange={e => setSmtpConfig({...smtpConfig, port: parseInt(e.target.value) || 0})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpPort(!showSmtpPort)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showSmtpPort ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Username</label>
-                  <input 
-                    type="text" 
-                    value={smtpConfig.username}
-                    onChange={e => setSmtpConfig({...smtpConfig, username: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="notifications@yourdomain.com"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showSmtpUser ? "text" : "password"} 
+                      value={smtpConfig.username}
+                      onChange={e => setSmtpConfig({...smtpConfig, username: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="notifications@yourdomain.com"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpUser(!showSmtpUser)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showSmtpUser ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">SMTP Password</label>
@@ -891,23 +1166,41 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">From Email</label>
-                  <input 
-                    type="text" 
-                    value={smtpConfig.from_email}
-                    onChange={e => setSmtpConfig({...smtpConfig, from_email: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="Holiday Planner <notifications@yourdomain.com>"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showSmtpFrom ? "text" : "password"} 
+                      value={smtpConfig.from_email}
+                      onChange={e => setSmtpConfig({...smtpConfig, from_email: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="Holiday Planner <notifications@yourdomain.com>"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpFrom(!showSmtpFrom)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showSmtpFrom ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">App URL (for email links)</label>
-                  <input 
-                    type="text" 
-                    value={smtpConfig.app_url}
-                    onChange={e => setSmtpConfig({...smtpConfig, app_url: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="https://your-app.run.app"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showSmtpAppUrl ? "text" : "password"} 
+                      value={smtpConfig.app_url}
+                      onChange={e => setSmtpConfig({...smtpConfig, app_url: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="https://your-app.run.app"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowSmtpAppUrl(!showSmtpAppUrl)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showSmtpAppUrl ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4 pt-6">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1004,13 +1297,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Service Account Email</label>
-                  <input 
-                    type="text" 
-                    value={driveConfig.client_email}
-                    onChange={e => setDriveConfig({...driveConfig, client_email: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="your-service-account@project.iam.gserviceaccount.com"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showDriveEmail ? "text" : "password"} 
+                      value={driveConfig.client_email}
+                      onChange={e => setDriveConfig({...driveConfig, client_email: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="your-service-account@project.iam.gserviceaccount.com"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowDriveEmail(!showDriveEmail)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showDriveEmail ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Private Key</label>
@@ -1018,20 +1320,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     <textarea 
                       value={driveConfig.private_key}
                       onChange={e => setDriveConfig({...driveConfig, private_key: e.target.value})}
-                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none h-24 text-[10px] font-mono"
+                      className={`w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none h-24 text-[10px] font-mono ${!showDriveKey ? 'blur-sm select-none' : ''}`}
                       placeholder="-----BEGIN PRIVATE KEY-----\n..."
                     />
+                    <button 
+                      type="button"
+                      onClick={() => setShowDriveKey(!showDriveKey)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-primary-600 z-10"
+                    >
+                      <i className={`fa-solid ${showDriveKey ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Google Drive Folder ID (or URL)</label>
-                  <input 
-                    type="text" 
-                    value={driveConfig.folder_id}
-                    onChange={e => setDriveConfig({...driveConfig, folder_id: e.target.value})}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="1a2b3c4d5e6f7g8h9i0j..."
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showDriveFolder ? "text" : "password"} 
+                      value={driveConfig.folder_id}
+                      onChange={e => setDriveConfig({...driveConfig, folder_id: e.target.value})}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="1a2b3c4d5e6f7g8h9i0j..."
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowDriveFolder(!showDriveFolder)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary-600"
+                    >
+                      <i className={`fa-solid ${showDriveFolder ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
+                  </div>
                   <p className="text-[10px] text-gray-400 mt-1">You can paste the full folder URL or just the ID.</p>
                 </div>
               </div>
@@ -1081,6 +1399,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </div>
               )}
+
+              <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
+                <h4 className="text-sm font-bold text-gray-800">How to get Google Drive Configuration:</h4>
+                <div className="grid grid-cols-1 gap-4 text-[11px] text-gray-600 leading-relaxed">
+                  <div className="bg-white p-3 rounded-xl border border-gray-100">
+                    <p className="font-bold text-gray-700 mb-1">1. Service Account & Private Key</p>
+                    <p>Go to <a href="https://console.cloud.google.com/" target="_blank" className="text-primary-600 hover:underline">Google Cloud Console</a>, create a project, enable "Google Drive API", then go to "IAM & Admin" &gt; "Service Accounts". Create a Service Account, then under the "Keys" tab, click "Add Key" &gt; "Create new key" (JSON). The email and private key are inside that file.</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-gray-100">
+                    <p className="font-bold text-gray-700 mb-1">2. Folder ID</p>
+                    <p>Open your Google Drive folder in a browser. The ID is the long string of characters at the end of the URL (after <code>/folders/</code>). Example: <code>1a2b3c...</code></p>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-gray-100">
+                    <p className="font-bold text-gray-700 mb-1">3. Sharing Access</p>
+                    <p>Crucially, you must click "Share" on your Drive folder and add the <strong>Service Account Email</strong> as an <strong>Editor</strong>. Without this, the application cannot upload files.</p>
+                  </div>
+                </div>
+              </div>
             </form>
           </div>
         )}
@@ -1143,6 +1479,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        show={confirmModal.show}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, show: false }))}
+        type={confirmModal.type}
+      />
+
       {/* Branch Edit Modal */}
       {editingBranch && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
@@ -1171,6 +1517,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                   placeholder="e.g. Oxford Street"
                 />
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-gray-700">Show Dashboard to Staff</p>
+                  <p className="text-[10px] text-gray-500">Allow staff to see summary tiles and request lists.</p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setEditingBranch({...editingBranch, showDashboardToStaff: !(editingBranch.showDashboardToStaff ?? true)})}
+                  className={cn(
+                    "w-10 h-5 rounded-full relative transition-colors duration-200",
+                    (editingBranch.showDashboardToStaff ?? true) ? "bg-primary-600" : "bg-gray-300"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-3 h-3 bg-white rounded-full transition-transform duration-200",
+                    (editingBranch.showDashboardToStaff ?? true) ? "left-6" : "left-1"
+                  )}></div>
+                </button>
               </div>
             </div>
             <div className="p-6 bg-gray-50 flex gap-3">
@@ -1249,11 +1614,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={e => setEditingUser({...editingUser, role: e.target.value as UserRole})}
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                 >
-                  <option value="HeadOffice">Head Office (Admin)</option>
+                  {isSAdmin && <option value="S-ADMIN">Super Admin (S-ADMIN)</option>}
+                  <option value="ADMIN">Admin (ADMIN)</option>
                   <option value="Manager">Branch Manager</option>
+                  <option value="Staff">Staff</option>
                 </select>
               </div>
-              {editingUser.role === 'Manager' && (
+              {(editingUser.role === 'Manager' || editingUser.role === 'Staff') && (
                 <div>
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Assigned Branch</label>
                   <select 

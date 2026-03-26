@@ -58,6 +58,7 @@ const Layout: React.FC<LayoutProps> = ({
                 onClick={() => onViewChange('Reports')}
                 className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Reports' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Reports"
+                hidden={role === 'Staff'}
               >
                 <i className="fa-solid fa-file-invoice"></i>
               </button>
@@ -65,6 +66,7 @@ const Layout: React.FC<LayoutProps> = ({
                 onClick={() => onViewChange('Settings')}
                 className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Settings' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Settings"
+                hidden={role === 'Staff'}
               >
                 <i className="fa-solid fa-gear"></i>
               </button>
@@ -76,8 +78,13 @@ const Layout: React.FC<LayoutProps> = ({
                 <i className="fa-solid fa-right-from-bracket"></i>
               </button>
             </div>
-            {(role === 'HeadOffice' || role === 'Manager') && (
-              <select value={currentBranchId} onChange={(e) => onBranchChange(e.target.value)} className="bg-gray-100 border-none rounded-md text-xs font-bold px-3 py-1.5">
+            {(role === 'S-ADMIN' || role === 'ADMIN' || role === 'Manager' || role === 'Staff') && (
+              <select 
+                value={currentBranchId} 
+                onChange={(e) => onBranchChange(e.target.value)} 
+                disabled={role === 'Staff'}
+                className={`bg-gray-100 border-none rounded-md text-xs font-bold px-3 py-1.5 ${role === 'Staff' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 <option value="all">All Branches</option>
                 {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
@@ -123,27 +130,32 @@ const Layout: React.FC<LayoutProps> = ({
                 <i className="fa-solid fa-calendar-days text-[10px]"></i>
                 {!isShrunk && <span className="hidden sm:inline">Planner</span>}
               </button>
-              <button 
-                onClick={() => onViewChange('Reports')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Reports' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
-              >
-                <i className="fa-solid fa-file-invoice text-[10px]"></i>
-                {!isShrunk && <span className="hidden sm:inline">Reports</span>}
-              </button>
-              <button 
-                onClick={() => onViewChange('Settings')}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Settings' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
-              >
-                <i className="fa-solid fa-gear text-[10px]"></i>
-                {!isShrunk && <span className="hidden sm:inline">Settings</span>}
-              </button>
+              {role !== 'Staff' && (
+                <button 
+                  onClick={() => onViewChange('Reports')}
+                  className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Reports' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                >
+                  <i className="fa-solid fa-file-invoice text-[10px]"></i>
+                  {!isShrunk && <span className="hidden sm:inline">Reports</span>}
+                </button>
+              )}
+              {role !== 'Staff' && (
+                <button 
+                  onClick={() => onViewChange('Settings')}
+                  className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Settings' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                >
+                  <i className="fa-solid fa-gear text-[10px]"></i>
+                  {!isShrunk && <span className="hidden sm:inline">Settings</span>}
+                </button>
+              )}
             </div>
 
-            {(role === 'HeadOffice' || role === 'Manager') && (
+            {(role === 'S-ADMIN' || role === 'ADMIN' || role === 'Manager' || role === 'Staff') && (
               <select 
                 value={currentBranchId}
                 onChange={(e) => onBranchChange(e.target.value)}
-                className={`bg-primary-800 border-none rounded-md font-bold focus:ring-1 focus:ring-white transition-all cursor-pointer ${isShrunk ? 'text-[9px] px-1.5 py-0.5 max-w-[60px] sm:max-w-[100px]' : 'text-xs sm:text-sm px-3 py-1.5'}`}
+                disabled={role === 'Staff'}
+                className={`bg-primary-800 border-none rounded-md font-bold focus:ring-1 focus:ring-white transition-all cursor-pointer ${isShrunk ? 'text-[9px] px-1.5 py-0.5 max-w-[60px] sm:max-w-[100px]' : 'text-xs sm:text-sm px-3 py-1.5'} ${role === 'Staff' ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <option value="all">{isShrunk ? 'All' : 'All Branches'}</option>
                 {branches.map(b => (

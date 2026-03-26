@@ -4,21 +4,37 @@ import { User } from '../types';
 
 interface LoginViewProps {
   onLogin: (user: User) => void;
-  users: User[];
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ onLogin, users }) => {
+const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
+    setIsLoggingIn(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Invalid username or password');
+      }
+
+      const user = await response.json();
       onLogin(user);
-    } else {
-      setError('Invalid username or password');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -48,7 +64,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, users }) => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50"
+                disabled={isLoggingIn}
+                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50 disabled:opacity-50"
                 placeholder="Enter your username"
               />
             </div>
@@ -59,7 +76,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, users }) => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50"
+                disabled={isLoggingIn}
+                className="appearance-none relative block w-full px-4 py-3 border border-gray-200 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-all bg-gray-50 disabled:opacity-50"
                 placeholder="Enter your password"
               />
             </div>
@@ -68,9 +86,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, users }) => {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-md transition-all active:scale-95"
+              disabled={isLoggingIn}
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign in
+              {isLoggingIn ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                'Sign in'
+              )}
             </button>
           </div>
         </form>

@@ -124,7 +124,8 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS system_config (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         prime_time_months TEXT NOT NULL, -- JSON array
-        default_allowance INTEGER DEFAULT 28
+        default_allowance INTEGER DEFAULT 28,
+        last_rotation_month TEXT -- Format: YYYY-MM
       );
     `;
 
@@ -155,7 +156,19 @@ async function initDb() {
     if (adminExists.rowCount === 0) {
       await sql`
         INSERT INTO users (id, username, password, role, name)
-        VALUES ('admin-1', 'admin', 'password123', 'HeadOffice', 'Head Office Admin')
+        VALUES ('admin-1', 'admin', 'password123', 'S-ADMIN', 'Head Office Admin')
+      `;
+    } else if (adminExists.rows[0].role === 'ADMIN') {
+      // Upgrade existing admin to S-ADMIN if it was migrated from HeadOffice
+      await sql`UPDATE users SET role = 'S-ADMIN' WHERE username = 'admin'`;
+    }
+
+    // Seed initial staff user if not exists
+    const staffUserExists = await sql`SELECT * FROM users WHERE username = 'staff'`;
+    if (staffUserExists.rowCount === 0) {
+      await sql`
+        INSERT INTO users (id, username, password, role, name)
+        VALUES ('staff-shared', 'staff', 'greystone', 'Staff', 'Greystone Staff')
       `;
     }
 
@@ -163,21 +176,44 @@ async function initDb() {
     const configExists = await sql`SELECT * FROM system_config WHERE id = 1`;
     if (configExists.rowCount === 0) {
       await sql`
-        INSERT INTO system_config (id, prime_time_months, default_allowance)
-        VALUES (1, '[6, 7, 11]', 28)
+        INSERT INTO system_config (id, prime_time_months, default_allowance, last_rotation_month)
+        VALUES (1, '[6, 7, 11]', 28, '')
       `;
     }
     
+    // Auto-sync branch staff users
+    await syncBranchStaffUsers();
+    
+    // Check for password rotation
+    await checkPasswordRotation();
+
     console.log("Database initialized successfully");
 
     // Migrations for existing tables
     try {
+      // One-time cleanup: Remove all users under staff as requested
+      // We'll use a flag in system_config to ensure this only runs once if needed, 
+      // but the user specifically asked to remove them now.
+      // To be safe, we'll only do it if a certain migration hasn't run.
+      const staffCleanupDone = await sql`SELECT * FROM system_config WHERE id = 1 AND last_rotation_month = 'CLEANUP_DONE'`;
+      if (staffCleanupDone.rowCount === 0) {
+        await sql`DELETE FROM users WHERE role = 'Staff' AND id != 'staff-shared'`;
+        await sql`UPDATE system_config SET last_rotation_month = 'CLEANUP_DONE' WHERE id = 1`;
+        console.log("One-time staff user cleanup performed (excluding shared staff).");
+      }
+
+      // Rename HeadOffice to ADMIN for existing users
+      await sql`UPDATE users SET role = 'ADMIN' WHERE role = 'HeadOffice'`;
+      
       await sql`ALTER TABLE staff ADD COLUMN IF NOT EXISTS email TEXT`;
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT`;
       await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS receive_notifications BOOLEAN DEFAULT FALSE`;
       await sql`ALTER TABLE smtp_config ADD COLUMN IF NOT EXISTS app_url TEXT NOT NULL DEFAULT ''`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_url TEXT`;
       await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS attachment_id TEXT`;
+      await sql`ALTER TABLE system_config ADD COLUMN IF NOT EXISTS last_rotation_month TEXT`;
+      await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE`;
+      await sql`ALTER TABLE holiday_requests ADD COLUMN IF NOT EXISTS is_staff_request BOOLEAN DEFAULT FALSE`;
       console.log("Database migrations applied successfully");
     } catch (migErr) {
       console.warn("Migration warning (columns might already exist):", migErr);
@@ -192,14 +228,100 @@ if (process.env.POSTGRES_URL) {
   process.env.POSTGRES_URL = process.env.POSTGRES_URL.trim().replace(/^["']|["']$/g, '');
 }
 
+// --- Helper Functions for Branch Staff ---
+
+function generateStaffPassword(branchName: string) {
+  const prefix = branchName.substring(0, 4).toLowerCase().padEnd(4, 'x');
+  const random = Math.floor(100 + Math.random() * 900);
+  return `${prefix}${random}`;
+}
+
+async function syncBranchStaffUsers() {
+  // Automatic creation of branch staff users is now disabled per user request.
+  // Admins will create staff profiles manually.
+  return;
+}
+
+async function checkPasswordRotation() {
+  try {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+    
+    const { rows: config } = await sql`SELECT last_rotation_month FROM system_config WHERE id = 1`;
+    const lastRotation = config[0]?.last_rotation_month;
+
+    // If it's the 1st of the month and we haven't rotated yet
+    if (now.getDate() === 1 && lastRotation !== currentMonth && lastRotation !== 'CLEANUP_DONE') {
+      console.log("Rotating staff passwords for the new month...");
+      const { rows: staffUsers } = await sql`SELECT id, branch_id FROM users WHERE role = 'Staff' AND branch_id IS NOT NULL`;
+      
+      for (const user of staffUsers) {
+        const { rows: branch } = await sql`SELECT name FROM branches WHERE id = ${user.branch_id}`;
+        if (branch.length > 0) {
+          const newPassword = generateStaffPassword(branch[0].name);
+          await sql`UPDATE users SET password = ${newPassword} WHERE id = ${user.id}`;
+        }
+      }
+
+      await sql`UPDATE system_config SET last_rotation_month = ${currentMonth} WHERE id = 1`;
+      console.log("Password rotation complete.");
+    }
+  } catch (err) {
+    console.error("Password rotation check failed:", err);
+  }
+}
+
+// --- Middleware for Role-Based Access Control ---
+const requireRole = (roles: string[]) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const userRole = getHeader(req.headers['x-user-role']);
+    if (!userRole || !roles.includes(userRole)) {
+      return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+    }
+    next();
+  };
+};
+
+const getHeader = (val: string | string[] | undefined): string => {
+  if (Array.isArray(val)) return val[0];
+  return val || '';
+};
+
+const requireSAdmin = requireRole(['S-ADMIN']);
+const requireAdmin = requireRole(['S-ADMIN', 'ADMIN']);
+const requireManager = requireRole(['S-ADMIN', 'ADMIN', 'Manager']);
+
 // --- API Routes ---
+
+// Login
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    if (!process.env.POSTGRES_URL) {
+      return res.status(500).json({ error: "POSTGRES_URL is missing" });
+    }
+    const result = await sql`
+      SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" 
+      FROM users 
+      WHERE username = ${username} AND password = ${password}
+    `;
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error("Login error:", error.message);
+    res.status(500).json({ error: "Failed to login" });
+  }
+});
 
 // Health Check
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
     dbConnected: !!process.env.POSTGRES_URL,
-    env: process.env.NODE_ENV
+    env: process.env.NODE_ENV,
+    vercel: !!process.env.VERCEL
   });
 });
 
@@ -207,9 +329,20 @@ app.get("/api/health", (req, res) => {
 app.get("/api/branches", async (req, res) => {
   try {
     if (!process.env.POSTGRES_URL) {
+      console.warn("Fetch branches: POSTGRES_URL is missing");
       return res.status(500).json({ error: "POSTGRES_URL is missing" });
     }
-    const { rows } = await sql`SELECT * FROM branches`;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    let rows;
+    if (userRole === 'Staff' && userBranchId) {
+      const result = await sql`SELECT * FROM branches WHERE id = ${userBranchId}`;
+      rows = result.rows;
+    } else {
+      const result = await sql`SELECT * FROM branches`;
+      rows = result.rows;
+    }
     res.json(rows);
   } catch (error: any) {
     console.error("Fetch branches error:", error.message);
@@ -217,7 +350,7 @@ app.get("/api/branches", async (req, res) => {
   }
 });
 
-app.post("/api/branches", async (req, res) => {
+app.post("/api/branches", requireAdmin, async (req, res) => {
   const client = await db.connect();
   try {
     const branches = req.body;
@@ -236,15 +369,11 @@ app.post("/api/branches", async (req, res) => {
       `;
     }
     
-    // Delete branches no longer in the list
-    const ids = uniqueBranches.map(b => b.id);
-    if (ids.length > 0) {
-      await client.query('DELETE FROM branches WHERE id NOT IN (' + ids.map((_, i) => '$' + (i + 1)).join(',') + ')', ids);
-    } else {
-      await client.sql`DELETE FROM branches`;
-    }
-    
     await client.sql`COMMIT`;
+    
+    // Sync staff users for new branches
+    await syncBranchStaffUsers();
+    
     res.json({ success: true });
   } catch (error) {
     try { await client.sql`ROLLBACK`; } catch (e) {}
@@ -259,9 +388,20 @@ app.post("/api/branches", async (req, res) => {
 app.get("/api/staff", async (req, res) => {
   try {
     if (!process.env.POSTGRES_URL) {
+      console.warn("Fetch staff: POSTGRES_URL is missing");
       return res.status(500).json({ error: "POSTGRES_URL is missing" });
     }
-    const { rows } = await sql`SELECT id, name, category, branch_id as "branchId", total_allowance as "totalAllowance", email FROM staff`;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    let rows;
+    if (userRole === 'Staff' && userBranchId) {
+      const result = await sql`SELECT id, name, category, branch_id as "branchId", total_allowance as "totalAllowance", email FROM staff WHERE branch_id = ${userBranchId}`;
+      rows = result.rows;
+    } else {
+      const result = await sql`SELECT id, name, category, branch_id as "branchId", total_allowance as "totalAllowance", email FROM staff`;
+      rows = result.rows;
+    }
     res.json(rows);
   } catch (error: any) {
     console.error("Fetch staff error:", error.message);
@@ -269,7 +409,7 @@ app.get("/api/staff", async (req, res) => {
   }
 });
 
-app.post("/api/staff", async (req, res) => {
+app.post("/api/staff", requireAdmin, async (req, res) => {
   const client = await db.connect();
   try {
     const staffList = req.body;
@@ -291,13 +431,6 @@ app.post("/api/staff", async (req, res) => {
       `;
     }
 
-    const ids = uniqueStaff.map(s => s.id);
-    if (ids.length > 0) {
-      await client.query('DELETE FROM staff WHERE id NOT IN (' + ids.map((_, i) => '$' + (i + 1)).join(',') + ')', ids);
-    } else {
-      await client.sql`DELETE FROM staff`;
-    }
-
     await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
@@ -313,9 +446,20 @@ app.post("/api/staff", async (req, res) => {
 app.get("/api/requests", async (req, res) => {
   try {
     if (!process.env.POSTGRES_URL) {
+      console.warn("Fetch requests: POSTGRES_URL is missing");
       return res.status(500).json({ error: "POSTGRES_URL is missing" });
     }
-    const { rows } = await sql`SELECT id, staff_id as "staffId", branch_id as "branchId", start_date as "startDate", end_date as "endDate", status, notes, created_at as "createdAt", attachment_url as "attachmentUrl", attachment_id as "attachmentId" FROM holiday_requests`;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    let rows;
+    if (userRole === 'Staff' && userBranchId) {
+      const result = await sql`SELECT id, staff_id as "staffId", branch_id as "branchId", start_date as "startDate", end_date as "endDate", status, notes, created_at as "createdAt", attachment_url as "attachmentUrl", attachment_id as "attachmentId", is_urgent as "isUrgent", is_staff_request as "isStaffRequest" FROM holiday_requests WHERE branch_id = ${userBranchId}`;
+      rows = result.rows;
+    } else {
+      const result = await sql`SELECT id, staff_id as "staffId", branch_id as "branchId", start_date as "startDate", end_date as "endDate", status, notes, created_at as "createdAt", attachment_url as "attachmentUrl", attachment_id as "attachmentId", is_urgent as "isUrgent", is_staff_request as "isStaffRequest" FROM holiday_requests`;
+      rows = result.rows;
+    }
     res.json(rows);
   } catch (error: any) {
     console.error("Fetch requests error:", error.message);
@@ -337,8 +481,8 @@ app.post("/api/requests", async (req, res) => {
     await client.sql`BEGIN`;
     for (const r of uniqueRequests) {
       await client.sql`
-        INSERT INTO holiday_requests (id, staff_id, branch_id, start_date, end_date, status, notes, created_at, attachment_url, attachment_id) 
-        VALUES (${r.id}, ${r.staffId}, ${r.branchId}, ${r.startDate}, ${r.endDate}, ${r.status}, ${r.notes}, ${r.createdAt}, ${r.attachmentUrl}, ${r.attachmentId})
+        INSERT INTO holiday_requests (id, staff_id, branch_id, start_date, end_date, status, notes, created_at, attachment_url, attachment_id, is_urgent, is_staff_request) 
+        VALUES (${r.id}, ${r.staffId}, ${r.branchId}, ${r.startDate}, ${r.endDate}, ${r.status}, ${r.notes}, ${r.createdAt}, ${r.attachmentUrl}, ${r.attachmentId}, ${r.isUrgent || false}, ${r.isStaffRequest || false})
         ON CONFLICT (id) DO UPDATE SET
           staff_id = EXCLUDED.staff_id,
           branch_id = EXCLUDED.branch_id,
@@ -348,15 +492,10 @@ app.post("/api/requests", async (req, res) => {
           notes = EXCLUDED.notes,
           created_at = EXCLUDED.created_at,
           attachment_url = EXCLUDED.attachment_url,
-          attachment_id = EXCLUDED.attachment_id
+          attachment_id = EXCLUDED.attachment_id,
+          is_urgent = EXCLUDED.is_urgent,
+          is_staff_request = EXCLUDED.is_staff_request
       `;
-    }
-
-    const ids = uniqueRequests.map(r => r.id);
-    if (ids.length > 0) {
-      await client.query('DELETE FROM holiday_requests WHERE id NOT IN (' + ids.map((_, i) => '$' + (i + 1)).join(',') + ')', ids);
-    } else {
-      await client.sql`DELETE FROM holiday_requests`;
     }
 
     await client.sql`COMMIT`;
@@ -417,15 +556,17 @@ async function handleNewRequestNotification(request: any) {
 
     for (const user of usersToNotify) {
       console.log(`Sending new request notification to ${user.name} (${user.email})...`);
+      const urgentPrefix = request.isUrgent ? "🚨 URGENT: " : "";
       await sendEmail({
         to: user.email,
-        subject: `New Holiday Request: ${staffName} (${branchName})`,
-        text: `${staffName} has submitted a new holiday request from ${request.startDate} to ${request.endDate}.\n\nPlease log in to the Holiday Planner to review it.\n\n---\nThis is an unattended inbox, please do not reply to this email.`,
+        subject: `${urgentPrefix}New Holiday Request: ${staffName} (${branchName})`,
+        text: `${urgentPrefix}${staffName} has submitted a new holiday request from ${request.startDate} to ${request.endDate}.${request.isUrgent ? '\n\nThis is marked as URGENT.' : ''}\n\nPlease log in to the Holiday Planner to review it.\n\n---\nThis is an unattended inbox, please do not reply to this email.`,
         html: `
-          <h3>New Holiday Request</h3>
+          <h3 style="${request.isUrgent ? 'color: #dc2626;' : ''}">${urgentPrefix}New Holiday Request</h3>
           <p><strong>Staff:</strong> ${staffName}</p>
           <p><strong>Branch:</strong> ${branchName}</p>
           <p><strong>Dates:</strong> ${request.startDate} to ${request.endDate}</p>
+          ${request.isUrgent ? '<p style="color: #dc2626; font-weight: bold;">🚨 This request is marked as URGENT.</p>' : ''}
           <p>Please log in to the <a href="${smtpConfig?.app_url || '#'}">Holiday Planner</a> to review this request.</p>
           <hr/>
           <p style="color: #666; font-size: 12px;">This is an unattended inbox, please do not reply to this email.</p>
@@ -598,14 +739,55 @@ app.post("/api/delete-file", async (req, res) => {
 // Users
 app.get("/api/users", async (req, res) => {
   try {
-    const { rows } = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users`;
+    if (!process.env.POSTGRES_URL) {
+      console.warn("Fetch users: POSTGRES_URL is missing");
+      return res.status(500).json({ error: "POSTGRES_URL is missing" });
+    }
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+    const userId = getHeader(req.headers['x-user-id']);
+
+    let rows;
+    if (userRole === 'Manager' && userBranchId) {
+      // Managers can see users in their branch (including the branch staff user)
+      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users WHERE branch_id = ${userBranchId} OR role = 'S-ADMIN' OR role = 'ADMIN'`;
+      rows = result.rows;
+    } else if (userRole === 'Staff') {
+      // Staff can only see themselves (though they usually don't access this)
+      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users WHERE id = ${userId}`;
+      rows = result.rows;
+    } else {
+      const result = await sql`SELECT id, username, password, role, branch_id as "branchId", name, email, receive_notifications as "receiveNotifications" FROM users`;
+      rows = result.rows;
+    }
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch users" });
   }
 });
 
-app.post("/api/users", async (req, res) => {
+app.get("/api/branch-staff-passwords", requireManager, async (req, res) => {
+  try {
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    let rows;
+    if ((userRole === 'S-ADMIN' || userRole === 'ADMIN')) {
+      const result = await sql`SELECT b.name as "branchName", u.username, u.password FROM users u JOIN branches b ON u.branch_id = b.id WHERE u.role = 'Staff'`;
+      rows = result.rows;
+    } else if (userRole === 'Manager' && userBranchId) {
+      const result = await sql`SELECT b.name as "branchName", u.username, u.password FROM users u JOIN branches b ON u.branch_id = b.id WHERE u.role = 'Staff' AND u.branch_id = ${userBranchId}`;
+      rows = result.rows;
+    } else {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch branch staff passwords" });
+  }
+});
+
+app.post("/api/users", requireAdmin, async (req, res) => {
   const client = await db.connect();
   try {
     const users = req.body;
@@ -613,8 +795,14 @@ app.post("/api/users", async (req, res) => {
 
     const uniqueUsers = Array.from(new Map(users.filter(u => u?.id).map(u => [u.id, u])).values());
 
+    const userRole = req.headers['x-user-role'] as string;
+    const isSAdmin = userRole === 'S-ADMIN';
+
     await client.sql`BEGIN`;
     for (const u of uniqueUsers) {
+      // Prevent non-S-ADMIN from creating/updating S-ADMIN users
+      if (!isSAdmin && u.role === 'S-ADMIN') continue;
+
       await client.sql`
         INSERT INTO users (id, username, password, role, branch_id, name, email, receive_notifications) 
         VALUES (${u.id}, ${u.username}, ${u.password}, ${u.role}, ${u.branchId}, ${u.name}, ${u.email}, ${u.receiveNotifications})
@@ -629,13 +817,6 @@ app.post("/api/users", async (req, res) => {
       `;
     }
 
-    const ids = uniqueUsers.map(u => u.id);
-    if (ids.length > 0) {
-      await client.query('DELETE FROM users WHERE id NOT IN (' + ids.map((_, i) => '$' + (i + 1)).join(',') + ')', ids);
-    } else {
-      await client.sql`DELETE FROM users`;
-    }
-
     await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
@@ -644,6 +825,95 @@ app.post("/api/users", async (req, res) => {
     res.status(500).json({ error: "Failed to update users" });
   } finally {
     client.release();
+  }
+});
+
+app.delete("/api/branches/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    await sql`DELETE FROM branches WHERE id = ${id}`;
+    // Also delete staff in this branch
+    await sql`DELETE FROM staff WHERE branch_id = ${id}`;
+    // Also delete requests in this branch
+    await sql`DELETE FROM holiday_requests WHERE branch_id = ${id}`;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete branch" });
+  }
+});
+
+app.delete("/api/staff/:id", requireManager, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    if (userRole === 'Manager') {
+      const staffResult = await sql`SELECT branch_id FROM staff WHERE id = ${id}`;
+      if (staffResult.rows.length === 0) return res.status(404).json({ error: "Staff not found" });
+      if (staffResult.rows[0].branch_id !== userBranchId) {
+        return res.status(403).json({ error: "You can only delete staff in your own branch" });
+      }
+    }
+
+    await sql`DELETE FROM staff WHERE id = ${id}`;
+    // Also delete requests for this staff member
+    await sql`DELETE FROM holiday_requests WHERE staff_id = ${id}`;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete staff" });
+  }
+});
+
+app.delete("/api/requests/:id", requireManager, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const userBranchId = getHeader(req.headers['x-user-branch-id']);
+
+    if (userRole === 'Manager') {
+      const reqResult = await sql`SELECT branch_id FROM holiday_requests WHERE id = ${id}`;
+      if (reqResult.rows.length === 0) return res.status(404).json({ error: "Request not found" });
+      if (reqResult.rows[0].branch_id !== userBranchId) {
+        return res.status(403).json({ error: "You can only delete requests in your own branch" });
+      }
+    }
+
+    await sql`DELETE FROM holiday_requests WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete request" });
+  }
+});
+
+app.delete("/api/users/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const userRole = getHeader(req.headers['x-user-role']);
+    const currentUserId = getHeader(req.headers['x-user-id']);
+
+    if (id === currentUserId) {
+      return res.status(400).json({ error: "You cannot delete yourself" });
+    }
+
+    // Fetch the user to be deleted to check their role
+    const targetUserResult = await sql`SELECT role FROM users WHERE id = ${id}`;
+    if (targetUserResult.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const targetRole = targetUserResult.rows[0].role;
+
+    // S-ADMIN can delete anyone (except themselves, handled above)
+    // ADMIN can delete Manager and Staff
+    if (userRole === 'ADMIN' && (targetRole === 'S-ADMIN' || targetRole === 'ADMIN')) {
+      return res.status(403).json({ error: "You do not have permission to delete this user" });
+    }
+
+    await sql`DELETE FROM users WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({ error: "Failed to delete user" });
   }
 });
 
@@ -702,7 +972,7 @@ app.get('/api/drive-status', async (req, res) => {
   });
 });
 
-app.get('/api/drive-config', async (req, res) => {
+app.get("/api/drive-config", requireSAdmin, async (req, res) => {
   try {
     const config = await getDriveConfig();
     res.json(config || {});
@@ -711,7 +981,7 @@ app.get('/api/drive-config', async (req, res) => {
   }
 });
 
-app.post('/api/drive-config', async (req, res) => {
+app.post("/api/drive-config", requireSAdmin, async (req, res) => {
   try {
     const { client_email, private_key, folder_id } = req.body;
     await sql`
@@ -728,7 +998,7 @@ app.post('/api/drive-config', async (req, res) => {
   }
 });
 
-app.get("/api/smtp-config", async (req, res) => {
+app.get("/api/smtp-config", requireSAdmin, async (req, res) => {
   try {
     const config = await getSmtpConfig();
     res.json(config || {});
@@ -737,7 +1007,7 @@ app.get("/api/smtp-config", async (req, res) => {
   }
 });
 
-app.post("/api/smtp-config", async (req, res) => {
+app.post("/api/smtp-config", requireSAdmin, async (req, res) => {
   try {
     const { host, port, secure, username, password, from_email, app_url } = req.body;
     await sql`
@@ -758,7 +1028,7 @@ app.post("/api/smtp-config", async (req, res) => {
   }
 });
 
-app.post("/api/test-email", async (req, res) => {
+app.post("/api/test-email", requireSAdmin, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
@@ -781,6 +1051,10 @@ app.post("/api/test-email", async (req, res) => {
 
 app.get("/api/config", async (req, res) => {
   try {
+    if (!process.env.POSTGRES_URL) {
+      console.warn("Fetch config: POSTGRES_URL is missing");
+      return res.status(500).json({ error: "POSTGRES_URL is missing" });
+    }
     const { rows } = await sql`SELECT prime_time_months as "primeTimeMonths", default_allowance as "defaultAllowance" FROM system_config WHERE id = 1`;
     if (rows.length > 0) {
       res.json({
@@ -795,7 +1069,7 @@ app.get("/api/config", async (req, res) => {
   }
 });
 
-app.post("/api/config", async (req, res) => {
+app.post("/api/config", requireSAdmin, async (req, res) => {
   try {
     const config = req.body;
     await sql`UPDATE system_config SET prime_time_months = ${JSON.stringify(config.primeTimeMonths)}, default_allowance = ${config.defaultAllowance} WHERE id = 1`;

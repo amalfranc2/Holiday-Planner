@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Staff, HolidayRequest, StaffCategory, UserRole, SystemConfig, User, Branch } from '../types';
 import { CATEGORIES } from '../constants';
+import ConfirmationModal from './ConfirmationModal';
 
 interface HolidayModalProps {
   isOpen: boolean;
@@ -30,12 +31,26 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
     status: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn',
     duration: 1,
     attachmentUrl: '',
-    attachmentId: ''
+    attachmentId: '',
+    isUrgent: false
   });
   const [isUploading, setIsUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   const calculateDays = (start: string, end: string) => {
     if (!start || !end) return 0;
@@ -62,7 +77,8 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
         status: editingRequest.status,
         duration: calculateDays(editingRequest.startDate, editingRequest.endDate),
         attachmentUrl: editingRequest.attachmentUrl || '',
-        attachmentId: editingRequest.attachmentId || ''
+        attachmentId: editingRequest.attachmentId || '',
+        isUrgent: editingRequest.isUrgent || false
       });
     } else {
       const defaultDate = (initialDate || new Date()).toISOString().split('T')[0];
@@ -74,7 +90,8 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
         status: 'Pending',
         duration: 1,
         attachmentUrl: '',
-        attachmentId: ''
+        attachmentId: '',
+        isUrgent: false
       });
     }
   }, [editingRequest, initialDate, isOpen]);
@@ -89,15 +106,19 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isHO = role === 'HeadOffice';
+  const isHO = role === 'S-ADMIN' || role === 'ADMIN';
+  const isManager = role === 'Manager';
+  const isStaff = role === 'Staff';
   
   // Logic: Managers can only create requests for their own branch.
-  // If viewing another branch, we force the branchId to their own for new requests.
-  const effectiveBranchId = (role === 'Manager' && !editingRequest) 
-    ? currentUser.branchId 
-    : selectedBranchId;
+  // Staff can create for any branch they are searching in.
+  const effectiveBranchId = ((isManager || isStaff) && !editingRequest && selectedBranchId === 'all')
+    ? (isManager ? currentUser.branchId : '') // Staff must select a staff member first, which will determine branch
+    : (selectedBranchId === 'all' ? '' : selectedBranchId);
 
-  const branchStaff = staff.filter(s => s.branchId === effectiveBranchId);
+  const branchStaff = (isStaff || isHO) && (effectiveBranchId === 'all' || !effectiveBranchId)
+    ? staff 
+    : staff.filter(s => s.branchId === effectiveBranchId);
   const selectedStaff = staff.find(s => s.id === formData.staffId);
   const effectiveBranch = branches.find(b => b.id === effectiveBranchId);
 
@@ -219,7 +240,13 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       }
     } catch (err: any) {
       console.error("Upload failed:", err);
-      alert(`Upload failed:\n${err.message}`);
+      setConfirmModal({
+        show: true,
+        title: 'Upload Failed',
+        message: `Upload failed:\n${err.message}`,
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, show: false })),
+        type: 'danger'
+      });
     } finally {
       setIsUploading(false);
     }
@@ -241,7 +268,13 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       setShowCamera(true);
     } catch (err) {
       console.error("Camera access failed:", err);
-      alert("Could not access camera.");
+      setConfirmModal({
+        show: true,
+        title: 'Camera Error',
+        message: 'Could not access camera.',
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, show: false })),
+        type: 'danger'
+      });
     }
   };
 
@@ -279,16 +312,47 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
       endDate: formData.endDate,
       notes: formData.notes,
       status: formData.status,
-      branchId: effectiveBranchId,
+      branchId: selectedStaff?.branchId || effectiveBranchId,
       id: editingRequest?.id,
       attachmentUrl: formData.attachmentUrl,
-      attachmentId: formData.attachmentId
+      attachmentId: formData.attachmentId,
+      isUrgent: formData.isUrgent,
+      isStaffRequest: editingRequest ? editingRequest.isStaffRequest : isStaff
+    });
+    onClose();
+  };
+
+  const handleConvertToMyRequest = () => {
+    if (!editingRequest || !isManager) return;
+    
+    // Find the manager's staff record
+    const managerStaff = staff.find(s => s.name === currentUser.name && s.branchId === currentUser.branchId);
+    if (!managerStaff) {
+      setConfirmModal({
+        show: true,
+        title: 'Staff Record Not Found',
+        message: 'Could not find your staff record to convert this request.',
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, show: false })),
+        type: 'warning'
+      });
+      return;
+    }
+
+    onSave({
+      ...editingRequest,
+      staffId: managerStaff.id,
+      status: editingRequest.isStaffRequest ? 'Approved' : editingRequest.status,
+      isStaffRequest: false,
+      notes: `(Taken over from ${selectedStaff?.name}) ${formData.notes}`
     });
     onClose();
   };
 
   const isOwnBranch = editingRequest ? (editingRequest.branchId === currentUser.branchId) : (effectiveBranchId === currentUser.branchId);
-  const isReadOnly = !isHO && editingRequest && !isOwnBranch;
+  const canChangeStatus = isHO || isManager;
+  const isReadOnly = editingRequest 
+    ? !isHO && (isStaff ? !editingRequest.isStaffRequest : !isOwnBranch)
+    : false;
 
   const handleWithdraw = () => {
     if (!editingRequest) return;
@@ -302,29 +366,45 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
   const handleDeleteRequest = async () => {
     if (!editingRequest) return;
     
-    if (formData.attachmentId) {
-      setIsDeleting(true);
-      await deleteFileFromDrive(formData.attachmentId);
-      setIsDeleting(false);
-    }
-    
-    onDelete(editingRequest.id);
-    onClose();
+    setConfirmModal({
+      show: true,
+      title: 'Delete Request',
+      message: 'Are you sure you want to delete this holiday request?',
+      onConfirm: async () => {
+        if (formData.attachmentId) {
+          setIsDeleting(true);
+          await deleteFileFromDrive(formData.attachmentId);
+          setIsDeleting(false);
+        }
+        
+        onDelete(editingRequest.id);
+        onClose();
+        setConfirmModal(prev => ({ ...prev, show: false }));
+      },
+      type: 'danger'
+    });
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
               {editingRequest ? 'Edit Holiday Request' : 'New Holiday Request'}
             </h2>
-            {!editingRequest && (
-              <p className="text-[10px] font-bold text-primary-600 uppercase tracking-wider mt-1">
-                For Branch: {effectiveBranch?.name || 'Unknown'}
-              </p>
-            )}
+            <div className="flex flex-wrap gap-2 mt-1">
+              {!editingRequest && (
+                <p className="text-[10px] font-bold text-primary-600 uppercase tracking-wider">
+                  For Branch: {effectiveBranch?.name || (effectiveBranchId === '' ? 'All Branches' : 'Unknown')}
+                </p>
+              )}
+              {editingRequest?.isStaffRequest && (
+                <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  <i className="fa-solid fa-user-tag mr-1"></i> Staff Request
+                </span>
+              )}
+            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <i className="fa-solid fa-xmark text-xl"></i>
@@ -413,48 +493,65 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  disabled={!isHO}
-                  checked={formData.status === 'Pending'}
-                  onChange={() => setFormData(prev => ({ ...prev, status: 'Pending' }))}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Pending</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  disabled={!isHO}
-                  checked={formData.status === 'Approved'}
-                  onChange={() => setFormData(prev => ({ ...prev, status: 'Approved' }))}
-                  className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Approved</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  disabled={!isHO}
-                  checked={formData.status === 'Rejected'}
-                  onChange={() => setFormData(prev => ({ ...prev, status: 'Rejected' }))}
-                  className="w-4 h-4 text-red-600 focus:ring-red-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Rejected</span>
-              </label>
-              {formData.status === 'Withdrawn' && (
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
-                    disabled
-                    checked
-                    className="w-4 h-4 text-gray-400"
+                    disabled={!canChangeStatus}
+                    checked={formData.status === 'Pending'}
+                    onChange={() => setFormData(prev => ({ ...prev, status: 'Pending' }))}
+                    className="w-4 h-4 text-primary-600 focus:ring-primary-500"
                   />
-                  <span className="text-sm font-medium text-gray-400 italic">Withdrawn</span>
+                  <span className="text-sm font-medium text-gray-700">Pending</span>
                 </label>
-              )}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    disabled={!canChangeStatus}
+                    checked={formData.status === 'Approved'}
+                    onChange={() => setFormData(prev => ({ ...prev, status: 'Approved' }))}
+                    className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Approved</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    disabled={!canChangeStatus}
+                    checked={formData.status === 'Rejected'}
+                    onChange={() => setFormData(prev => ({ ...prev, status: 'Rejected' }))}
+                    className="w-4 h-4 text-red-600 focus:ring-red-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Rejected</span>
+                </label>
+                {formData.status === 'Withdrawn' && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      disabled
+                      checked
+                      className="w-4 h-4 text-gray-400"
+                    />
+                    <span className="text-sm font-medium text-gray-400 italic">Withdrawn</span>
+                  </label>
+                )}
+              </div>
+              
+              <div className="h-6 w-px bg-gray-200 hidden sm:block"></div>
+
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  disabled={isReadOnly}
+                  checked={formData.isUrgent}
+                  onChange={(e) => setFormData(prev => ({ ...prev, isUrgent: e.target.checked }))}
+                  className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                />
+                <span className={`text-sm font-bold uppercase tracking-wider ${formData.isUrgent ? 'text-red-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                  Urgent Request
+                </span>
+              </label>
             </div>
           </div>
 
@@ -615,7 +712,18 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
               </button>
             )}
 
-            {isHO && editingRequest && (
+            {isManager && editingRequest && selectedStaff && selectedStaff.name !== currentUser.name && (
+              <button
+                type="button"
+                onClick={handleConvertToMyRequest}
+                className={`w-full px-4 py-2.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${editingRequest.isStaffRequest ? 'bg-purple-50 text-purple-700 hover:bg-purple-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+              >
+                <i className={`fa-solid ${editingRequest.isStaffRequest ? 'fa-user-check' : 'fa-user-plus'}`}></i>
+                {editingRequest.isStaffRequest ? 'Take Ownership & Approve' : 'Convert to My Request'}
+              </button>
+            )}
+
+            {(isHO || (isManager && isOwnBranch)) && editingRequest && (
               <button
                 type="button"
                 disabled={isDeleting}
@@ -628,6 +736,15 @@ const HolidayModal: React.FC<HolidayModalProps> = ({
           </div>
         </form>
       </div>
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        show={confirmModal.show}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, show: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };

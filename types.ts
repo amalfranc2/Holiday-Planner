@@ -5,6 +5,7 @@ export interface Branch {
   id: string;
   name: string;
   location: string;
+  showDashboardToStaff?: boolean;
 }
 
 export interface Staff {
@@ -27,6 +28,8 @@ export interface HolidayRequest {
   createdAt: string; // Timestamp for priority logic
   attachmentUrl?: string;
   attachmentId?: string;
+  isUrgent?: boolean;
+  isStaffRequest?: boolean;
 }
 
 export interface SystemConfig {
@@ -40,7 +43,7 @@ export interface SystemConfig {
   };
 }
 
-export type UserRole = 'Manager' | 'HeadOffice';
+export type UserRole = 'Manager' | 'ADMIN' | 'S-ADMIN' | 'Staff';
 
 export interface User {
   id: string;
@@ -56,6 +59,15 @@ export interface User {
   bubbleStyle?: 'classic' | 'arc';
   showBubble?: boolean;
   smoothScroll?: boolean;
+  showDashboardInfoTiles?: boolean;
+  chartPreferences?: {
+    availabilitySummary?: boolean;
+    pendingRequests?: boolean;
+    approvedRequests?: boolean;
+    categoryDistribution?: boolean;
+    branchVolume?: boolean;
+    riskHeatmap?: boolean;
+  };
 }
 
 export interface UserContextType {

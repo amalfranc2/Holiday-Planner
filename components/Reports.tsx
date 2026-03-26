@@ -164,17 +164,17 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
         doc.setFontSize(10);
         doc.text(`Pending: ${branch.pendingCount} | Approved: ${branch.approvedCount} | Total: ${branch.requests.length}`, 14, currentY + 7);
         
-        const tableData = branch.requests.map(req => {
-          const s = staff.find(st => st.id === req.staffId);
-          return [
-            s?.name || 'Unknown',
-            s?.category || '-',
-            format(parseISO(req.startDate), 'PP'),
-            format(parseISO(req.endDate), 'PP'),
-            calculateDays(req.startDate, req.endDate),
-            req.status
-          ];
-        });
+          const tableData = branch.requests.map(req => {
+            const s = staff.find(st => st.id === req.staffId);
+            return [
+              `${s?.name || 'Unknown'}${req.isUrgent ? ' (URGENT)' : ''}`,
+              s?.category || '-',
+              format(parseISO(req.startDate), 'PP'),
+              format(parseISO(req.endDate), 'PP'),
+              calculateDays(req.startDate, req.endDate),
+              req.status
+            ];
+          });
         
         autoTable(doc, {
           startY: currentY + 12,
@@ -205,7 +205,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
         doc.text(`Allowance: ${s.totalAllowance}d | Used: ${s.approvedDays}d | Pending: ${s.pendingDays}d | Balance: ${s.balance}d`, 14, currentY + 7);
         
         const tableData = s.history.map(req => [
-          `${format(parseISO(req.startDate), 'MMM d')} - ${format(parseISO(req.endDate), 'MMM d, yyyy')}`,
+          `${format(parseISO(req.startDate), 'MMM d')} - ${format(parseISO(req.endDate), 'MMM d, yyyy')}${req.isUrgent ? ' (URGENT)' : ''}`,
           calculateDays(req.startDate, req.endDate),
           req.status,
           req.notes || '-',
@@ -416,7 +416,14 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                         const duration = calculateDays(req.startDate, req.endDate);
                         return (
                           <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="py-3 font-medium text-gray-700">{s?.name || 'Unknown'}</td>
+                            <td className="py-3 font-medium text-gray-700">
+                              <div className="flex items-center gap-2">
+                                {s?.name || 'Unknown'}
+                                {req.isUrgent && (
+                                  <span className="text-[8px] bg-red-600 text-white px-1 py-0.5 rounded font-black animate-pulse">URGENT</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="py-3 text-gray-500">{s?.category || '-'}</td>
                             <td className="py-3 text-gray-600">{format(parseISO(req.startDate), 'PP')}</td>
                             <td className="py-3 text-gray-600">{format(parseISO(req.endDate), 'PP')}</td>
@@ -528,7 +535,12 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       return (
                         <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 text-gray-700">
-                            {format(parseISO(req.startDate), 'MMM d')} - {format(parseISO(req.endDate), 'MMM d, yyyy')}
+                            <div className="flex items-center gap-2">
+                              {format(parseISO(req.startDate), 'MMM d')} - {format(parseISO(req.endDate), 'MMM d, yyyy')}
+                              {req.isUrgent && (
+                                <span className="text-[8px] bg-red-600 text-white px-1 py-0.5 rounded font-black animate-pulse">URGENT</span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 text-center">
                             <span className="text-[10px] font-bold bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">
