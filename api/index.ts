@@ -81,6 +81,16 @@ async function logAction(userId: string | null, userName: string | null, action:
   }
 }
 
+async function setDbUserContext(client: any, userId: string | null, userName: string | null) {
+  if (!userId) return;
+  try {
+    await client.sql`SELECT set_config('app.user_id', ${userId}, true)`;
+    await client.sql`SELECT set_config('app.user_name', ${userName || 'Unknown'}, true)`;
+  } catch (err) {
+    console.warn("Failed to set DB user context:", err);
+  }
+}
+
 // Ensure uploads directory exists
 // On Vercel/Serverless, we must use /tmp
 const uploadsDir = (process.env.VERCEL || process.env.NODE_ENV === 'production') 
@@ -277,21 +287,26 @@ async function initDb() {
           v_user_id TEXT;
           v_user_name TEXT;
         BEGIN
-          -- Try to get user info from a temporary table or session variable if we implemented one,
-          -- but for now we'll just log the database change. 
-          -- In a more advanced setup, we'd pass the current user ID from the app.
+          -- Try to get user info from session variables
+          BEGIN
+            v_user_id := current_setting('app.user_id', true);
+            v_user_name := current_setting('app.user_name', true);
+          EXCEPTION WHEN OTHERS THEN
+            v_user_id := NULL;
+            v_user_name := NULL;
+          END;
           
           IF (TG_OP = 'DELETE') THEN
-            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, old_data)
-            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, OLD.id::text, row_to_json(OLD)::text);
+            INSERT INTO system_logs (id, timestamp, user_id, user_name, action, table_name, record_id, old_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), v_user_id, v_user_name, TG_OP, TG_TABLE_NAME, OLD.id::text, row_to_json(OLD)::text);
             RETURN OLD;
           ELSIF (TG_OP = 'UPDATE') THEN
-            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, old_data, new_data)
-            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(OLD)::text, row_to_json(NEW)::text);
+            INSERT INTO system_logs (id, timestamp, user_id, user_name, action, table_name, record_id, old_data, new_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), v_user_id, v_user_name, TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(OLD)::text, row_to_json(NEW)::text);
             RETURN NEW;
           ELSIF (TG_OP = 'INSERT') THEN
-            INSERT INTO system_logs (id, timestamp, action, table_name, record_id, new_data)
-            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(NEW)::text);
+            INSERT INTO system_logs (id, timestamp, user_id, user_name, action, table_name, record_id, new_data)
+            VALUES (gen_random_uuid(), TO_CHAR(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), v_user_id, v_user_name, TG_OP, TG_TABLE_NAME, NEW.id::text, row_to_json(NEW)::text);
             RETURN NEW;
           END IF;
           RETURN NULL;
@@ -477,9 +492,13 @@ app.post("/api/branches", requireAdmin, async (req, res) => {
     const branches = req.body;
     if (!Array.isArray(branches)) return res.status(400).json({ error: "Invalid data" });
     
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+    
     const uniqueBranches = Array.from(new Map(branches.filter(b => b?.id).map(b => [b.id, b])).values());
 
     await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
     for (const b of uniqueBranches) {
       await client.sql`
         INSERT INTO branches (id, name, location) 
@@ -536,9 +555,13 @@ app.post("/api/staff", requireAdmin, async (req, res) => {
     const staffList = req.body;
     if (!Array.isArray(staffList)) return res.status(400).json({ error: "Invalid data" });
 
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
     const uniqueStaff = Array.from(new Map(staffList.filter(s => s?.id).map(s => [s.id, s])).values());
 
     await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
     for (const s of uniqueStaff) {
       await client.sql`
         INSERT INTO staff (id, name, category, branch_id, total_allowance, email) 
@@ -597,12 +620,13 @@ app.post("/api/requests", async (req, res) => {
     const userId = getHeader(req.headers['x-user-id']);
     const userName = getHeader(req.headers['x-user-name']);
 
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
+
     const uniqueRequests = Array.from(new Map(newRequests.filter(r => r?.id).map(r => [r.id, r])).values());
     
     const { rows: oldRequests } = await client.sql`SELECT id, status FROM holiday_requests`;
     const oldRequestsMap = new Map(oldRequests.map(r => [r.id, r]));
-
-    await client.sql`BEGIN`;
     for (const r of uniqueRequests) {
       const oldReq = oldRequestsMap.get(r.id);
       
@@ -959,12 +983,16 @@ app.post("/api/users", requireAdmin, async (req, res) => {
     const users = req.body;
     if (!Array.isArray(users)) return res.status(400).json({ error: "Invalid data" });
 
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
     const uniqueUsers = Array.from(new Map(users.filter(u => u?.id).map(u => [u.id, u])).values());
 
     const userRole = req.headers['x-user-role'] as string;
     const isSAdmin = userRole === 'S-ADMIN';
 
     await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
     for (const u of uniqueUsers) {
       // Prevent non-S-ADMIN from creating/updating S-ADMIN users
       if (!isSAdmin && u.role === 'S-ADMIN') continue;
@@ -1012,76 +1040,126 @@ app.post("/api/users", requireAdmin, async (req, res) => {
 });
 
 app.delete("/api/branches/:id", requireAdmin, async (req, res) => {
+  const client = await db.connect();
   try {
     const id = req.params.id as string;
-    await sql`DELETE FROM branches WHERE id = ${id}`;
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
+
+    await client.sql`DELETE FROM branches WHERE id = ${id}`;
     // Also delete staff in this branch
-    await sql`DELETE FROM staff WHERE branch_id = ${id}`;
+    await client.sql`DELETE FROM staff WHERE branch_id = ${id}`;
     // Also delete requests in this branch
-    await sql`DELETE FROM holiday_requests WHERE branch_id = ${id}`;
+    await client.sql`DELETE FROM holiday_requests WHERE branch_id = ${id}`;
+    
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: "Failed to delete branch" });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/api/staff/:id", requireManager, async (req, res) => {
+  const client = await db.connect();
   try {
     const id = req.params.id as string;
     const userRole = getHeader(req.headers['x-user-role']);
     const userBranchId = getHeader(req.headers['x-user-branch-id']);
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
 
     if (userRole === 'Manager') {
-      const staffResult = await sql`SELECT branch_id FROM staff WHERE id = ${id}`;
-      if (staffResult.rows.length === 0) return res.status(404).json({ error: "Staff not found" });
+      const staffResult = await client.sql`SELECT branch_id FROM staff WHERE id = ${id}`;
+      if (staffResult.rows.length === 0) {
+        await client.sql`ROLLBACK`;
+        return res.status(404).json({ error: "Staff not found" });
+      }
       if (staffResult.rows[0].branch_id !== userBranchId) {
+        await client.sql`ROLLBACK`;
         return res.status(403).json({ error: "You can only delete staff in your own branch" });
       }
     }
 
-    await sql`DELETE FROM staff WHERE id = ${id}`;
+    await client.sql`DELETE FROM staff WHERE id = ${id}`;
     // Also delete requests for this staff member
-    await sql`DELETE FROM holiday_requests WHERE staff_id = ${id}`;
+    await client.sql`DELETE FROM holiday_requests WHERE staff_id = ${id}`;
+    
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: "Failed to delete staff" });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/api/requests/:id", requireManager, async (req, res) => {
+  const client = await db.connect();
   try {
     const id = req.params.id as string;
     const userRole = getHeader(req.headers['x-user-role']);
     const userBranchId = getHeader(req.headers['x-user-branch-id']);
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
 
     if (userRole === 'Manager') {
-      const reqResult = await sql`SELECT branch_id FROM holiday_requests WHERE id = ${id}`;
-      if (reqResult.rows.length === 0) return res.status(404).json({ error: "Request not found" });
+      const reqResult = await client.sql`SELECT branch_id FROM holiday_requests WHERE id = ${id}`;
+      if (reqResult.rows.length === 0) {
+        await client.sql`ROLLBACK`;
+        return res.status(404).json({ error: "Request not found" });
+      }
       if (reqResult.rows[0].branch_id !== userBranchId) {
+        await client.sql`ROLLBACK`;
         return res.status(403).json({ error: "You can only delete requests in your own branch" });
       }
     }
 
-    await sql`DELETE FROM holiday_requests WHERE id = ${id}`;
+    await client.sql`DELETE FROM holiday_requests WHERE id = ${id}`;
+    
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: "Failed to delete request" });
+  } finally {
+    client.release();
   }
 });
 
 app.delete("/api/users/:id", requireAdmin, async (req, res) => {
+  const client = await db.connect();
   try {
     const id = req.params.id as string;
     const userRole = getHeader(req.headers['x-user-role']);
     const currentUserId = getHeader(req.headers['x-user-id']);
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
 
     if (id === currentUserId) {
+      await client.sql`ROLLBACK`;
       return res.status(400).json({ error: "You cannot delete yourself" });
     }
 
     // Fetch the user to be deleted to check their role
-    const targetUserResult = await sql`SELECT role FROM users WHERE id = ${id}`;
+    const targetUserResult = await client.sql`SELECT role FROM users WHERE id = ${id}`;
     if (targetUserResult.rows.length === 0) {
+      await client.sql`ROLLBACK`;
       return res.status(404).json({ error: "User not found" });
     }
     const targetRole = targetUserResult.rows[0].role;
@@ -1089,14 +1167,20 @@ app.delete("/api/users/:id", requireAdmin, async (req, res) => {
     // S-ADMIN can delete anyone (except themselves, handled above)
     // ADMIN can delete Manager and Staff
     if (userRole === 'ADMIN' && (targetRole === 'S-ADMIN' || targetRole === 'ADMIN')) {
+      await client.sql`ROLLBACK`;
       return res.status(403).json({ error: "You do not have permission to delete this user" });
     }
 
-    await sql`DELETE FROM users WHERE id = ${id}`;
+    await client.sql`DELETE FROM users WHERE id = ${id}`;
+    
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     console.error("Delete user error:", error);
     res.status(500).json({ error: "Failed to delete user" });
+  } finally {
+    client.release();
   }
 });
 
@@ -1220,9 +1304,16 @@ app.get("/api/drive-config", requireSAdmin, async (req, res) => {
 });
 
 app.post("/api/drive-config", requireSAdmin, async (req, res) => {
+  const client = await db.connect();
   try {
     const { client_email, private_key, folder_id } = req.body;
-    await sql`
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
+
+    await client.sql`
       INSERT INTO google_drive_config (id, client_email, private_key, folder_id)
       VALUES (1, ${client_email}, ${private_key}, ${folder_id})
       ON CONFLICT (id) DO UPDATE SET
@@ -1230,10 +1321,14 @@ app.post("/api/drive-config", requireSAdmin, async (req, res) => {
         private_key = EXCLUDED.private_key,
         folder_id = EXCLUDED.folder_id
     `;
-    await logAction(null, null, 'CONFIG_CHANGE', 'google_drive_config', '1', null, null, 'Google Drive configuration updated');
+    await logAction(userId, userName, 'CONFIG_CHANGE', 'google_drive_config', '1', null, null, 'Google Drive configuration updated', client);
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error: any) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1247,9 +1342,16 @@ app.get("/api/smtp-config", requireSAdmin, async (req, res) => {
 });
 
 app.post("/api/smtp-config", requireSAdmin, async (req, res) => {
+  const client = await db.connect();
   try {
     const { host, port, secure, username, password, from_email, app_url } = req.body;
-    await sql`
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
+
+    await client.sql`
       INSERT INTO smtp_config (id, host, port, secure, username, password, from_email, app_url)
       VALUES (1, ${host}, ${port}, ${secure}, ${username}, ${password}, ${from_email}, ${app_url})
       ON CONFLICT (id) DO UPDATE SET
@@ -1261,10 +1363,14 @@ app.post("/api/smtp-config", requireSAdmin, async (req, res) => {
         from_email = EXCLUDED.from_email,
         app_url = EXCLUDED.app_url
     `;
-    await logAction(null, null, 'CONFIG_CHANGE', 'smtp_config', '1', null, null, 'SMTP configuration updated');
+    await logAction(userId, userName, 'CONFIG_CHANGE', 'smtp_config', '1', null, null, 'SMTP configuration updated', client);
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error: any) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1310,13 +1416,24 @@ app.get("/api/config", async (req, res) => {
 });
 
 app.post("/api/config", requireSAdmin, async (req, res) => {
+  const client = await db.connect();
   try {
     const config = req.body;
-    await sql`UPDATE system_config SET prime_time_months = ${JSON.stringify(config.primeTimeMonths)}, default_allowance = ${config.defaultAllowance} WHERE id = 1`;
-    await logAction(null, null, 'CONFIG_CHANGE', 'system_config', '1', null, null, 'System configuration updated');
+    const userId = getHeader(req.headers['x-user-id']);
+    const userName = getHeader(req.headers['x-user-name']);
+
+    await client.sql`BEGIN`;
+    await setDbUserContext(client, userId, userName);
+
+    await client.sql`UPDATE system_config SET prime_time_months = ${JSON.stringify(config.primeTimeMonths)}, default_allowance = ${config.defaultAllowance} WHERE id = 1`;
+    await logAction(userId, userName, 'CONFIG_CHANGE', 'system_config', '1', null, null, 'System configuration updated', client);
+    await client.sql`COMMIT`;
     res.json({ success: true });
   } catch (error) {
+    try { await client.sql`ROLLBACK`; } catch (e) {}
     res.status(500).json({ error: "Failed to update config" });
+  } finally {
+    client.release();
   }
 });
 
