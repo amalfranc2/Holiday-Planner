@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.03) 0, transparent 50%), 
+      radial-gradient(at 50% 0%, rgba(129, 140, 248, 0.03) 0, transparent 50%), 
+      radial-gradient(at 100% 0%, rgba(165, 180, 252, 0.03) 0, transparent 50%);
+  }
+}
+
 @theme {
   --color-primary-50: var(--primary-50);
   --color-primary-100: var(--primary-100);
@@ -49,4 +59,14 @@
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

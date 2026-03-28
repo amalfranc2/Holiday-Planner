@@ -417,7 +417,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
         branches.find(b => b.id === currentBranchId)?.showDashboardToStaff !== false
       ) && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-1">
             <div className="flex items-center gap-2">
               <div className="w-1 h-4 bg-primary-500 rounded-full"></div>
               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
@@ -425,11 +425,11 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
               </h3>
             </div>
             
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto overflow-x-auto no-scrollbar whitespace-nowrap">
               <button 
                 onClick={() => setSelectedMonthOffset(0)}
                 className={cn(
-                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
+                  "px-4 py-2 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
                   selectedMonthOffset === 0 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 )}
               >
@@ -438,7 +438,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({
               <button 
                 onClick={() => setSelectedMonthOffset(1)}
                 className={cn(
-                  "px-3 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
+                  "px-4 py-2 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all",
                   selectedMonthOffset === 1 ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 )}
               >

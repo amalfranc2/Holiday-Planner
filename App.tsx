@@ -42,6 +42,7 @@ const App: React.FC = () => {
   
   const [currentBranchId, setCurrentBranchId] = useState<string>('all');
   const [isShrunk, setIsShrunk] = useState(false);
+  const [isNavDocked, setIsNavDocked] = useState(false);
 
   // Fetch Data from Backend
   const fetchData = async (user: User) => {
@@ -130,21 +131,32 @@ const App: React.FC = () => {
       if (root) root.scrollTo({ top: 0, behavior: 'auto' });
     }, 10);
     
+    // Reset nav docking on view change
+    setIsNavDocked(false);
+    
     return () => clearTimeout(timer);
   }, [currentView, viewType]);
 
-  // Scroll listener for shrinking header
+  // Scroll listener for shrinking header and docking nav
   useEffect(() => {
     const root = document.getElementById('root');
     const handleScroll = () => {
       const isLandscape = window.innerWidth > window.innerHeight && window.innerHeight < 500;
-      const scrollY = root ? root.scrollTop : window.scrollY;
+      const currentScrollY = root ? root.scrollTop : window.scrollY;
+      
+      // Header shrinking logic
       setIsShrunk(prev => {
         if (isLandscape) return true;
-        if (prev) return scrollY > 30;
-        return scrollY > 60;
+        if (prev) return currentScrollY > 30;
+        return currentScrollY > 60;
       });
+
+      // Nav docking logic
+      if (currentScrollY > 100) {
+        setIsNavDocked(true);
+      }
     };
+
     if (root) root.addEventListener('scroll', handleScroll);
     else window.addEventListener('scroll', handleScroll);
     window.addEventListener('resize', handleScroll);
@@ -351,19 +363,21 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <Layout 
-        role={currentUser.role} 
-        currentUser={currentUser}
-        currentBranchId={currentBranchId}
-        onBranchChange={setCurrentBranchId}
-        onLogout={handleLogout}
-        branches={branches}
-        currentView={currentView}
-        onViewChange={setCurrentView}
-        viewType={viewType}
-        onViewTypeChange={setViewType}
-        isShrunk={isShrunk}
-      >
+        <Layout 
+          role={currentUser.role} 
+          currentUser={currentUser}
+          currentBranchId={currentBranchId}
+          onBranchChange={setCurrentBranchId}
+          onLogout={handleLogout}
+          branches={branches}
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          viewType={viewType}
+          onViewTypeChange={setViewType}
+          isShrunk={isShrunk}
+          isNavDocked={isNavDocked}
+          setIsNavDocked={setIsNavDocked}
+        >
         {currentView === 'Calendar' ? (
           <MainView 
             role={currentUser.role}

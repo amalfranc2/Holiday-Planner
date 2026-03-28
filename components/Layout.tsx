@@ -16,10 +16,12 @@ interface LayoutProps {
   onViewChange: (view: 'Calendar' | 'Settings' | 'Reports') => void;
   viewType: 'Dashboard' | 'Yearly';
   onViewTypeChange: (type: 'Dashboard' | 'Yearly') => void;
+  isNavDocked?: boolean;
+  setIsNavDocked?: (docked: boolean) => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
-  children, role, currentUser, currentBranchId, onBranchChange, onLogout, hideHeader, isShrunk, branches, currentView, onViewChange, viewType, onViewTypeChange 
+  children, role, currentUser, currentBranchId, onBranchChange, onLogout, hideHeader, isShrunk, branches, currentView, onViewChange, viewType, onViewTypeChange, isNavDocked, setIsNavDocked 
 }) => {
   if (hideHeader) {
     return (
@@ -39,36 +41,36 @@ const Layout: React.FC<LayoutProps> = ({
                   onViewChange('Calendar');
                   onViewTypeChange('Dashboard');
                 }}
-                className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'text-primary-600 bg-primary-50' : ''}`}
+                className={`p-3 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Dashboard"
               >
-                <i className="fa-solid fa-chart-simple"></i>
+                <i className="fa-solid fa-chart-simple text-lg"></i>
               </button>
               <button 
                 onClick={() => {
                   onViewChange('Calendar');
                   onViewTypeChange('Yearly');
                 }}
-                className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Calendar' && viewType === 'Yearly' ? 'text-primary-600 bg-primary-50' : ''}`}
+                className={`p-3 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Calendar' && viewType === 'Yearly' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Planner"
               >
-                <i className="fa-solid fa-calendar-days"></i>
+                <i className="fa-solid fa-calendar-days text-lg"></i>
               </button>
               <button 
                 onClick={() => onViewChange('Reports')}
-                className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Reports' ? 'text-primary-600 bg-primary-50' : ''}`}
+                className={`p-3 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Reports' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Reports"
                 hidden={role === 'Staff'}
               >
-                <i className="fa-solid fa-file-invoice"></i>
+                <i className="fa-solid fa-file-invoice text-lg"></i>
               </button>
               <button 
                 onClick={() => onViewChange('Settings')}
-                className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Settings' ? 'text-primary-600 bg-primary-50' : ''}`}
+                className={`p-3 rounded-lg text-gray-500 hover:bg-gray-100 transition-all ${currentView === 'Settings' ? 'text-primary-600 bg-primary-50' : ''}`}
                 title="Settings"
                 hidden={role === 'Staff'}
               >
-                <i className="fa-solid fa-gear"></i>
+                <i className="fa-solid fa-gear text-lg"></i>
               </button>
               <button 
                 onClick={onLogout}
@@ -98,26 +100,26 @@ const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className={`bg-primary-700 text-white shadow-lg sticky top-0 z-50 transition-all duration-500 print:hidden ${isShrunk ? 'py-1' : 'py-4'}`}>
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex ${isShrunk ? 'flex-row' : 'flex-col md:flex-row'} justify-between items-center gap-2 transition-all duration-500 ${isShrunk ? 'scale-95 opacity-90' : 'scale-100 opacity-100'}`}>
+      <header className={`bg-primary-700 text-white shadow-lg sticky top-0 z-50 transition-all duration-500 print:hidden ${isShrunk ? 'py-2' : 'py-4'}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex ${isShrunk ? 'flex-row' : 'flex-col md:flex-row'} justify-between items-center gap-2 transition-all duration-500 ${isShrunk ? 'scale-100 opacity-95' : 'scale-100 opacity-100'}`}>
           <div className="flex items-center space-x-2 cursor-pointer shrink-0" onClick={() => {
             onViewChange('Calendar');
             onViewTypeChange(currentUser.defaultView || 'Dashboard');
           }}>
-            <i className={`fa-solid fa-calendar-days transition-all ${isShrunk ? 'text-base' : 'text-2xl'}`}></i>
-            <h1 className={`font-bold tracking-tight transition-all ${isShrunk ? 'text-[10px] hidden sm:block' : 'text-xl'}`}>Glenn Anthony</h1>
+            <i className={`fa-solid fa-calendar-days transition-all ${isShrunk ? 'text-lg' : 'text-2xl'}`}></i>
+            <h1 className={`font-bold tracking-tight transition-all ${isShrunk ? 'text-xs hidden sm:block' : 'text-xl'}`}>Glenn Anthony</h1>
           </div>
           
           <div className={`flex items-center ${isShrunk ? 'gap-1 sm:gap-2' : 'gap-2 sm:gap-4'} transition-all`}>
-            <div className={`flex bg-primary-800 p-0.5 rounded-xl border border-primary-600/30 transition-all ${isShrunk ? 'scale-90' : 'scale-100'}`}>
+            <div className={`hidden sm:flex bg-primary-800 p-0.5 rounded-xl border border-primary-600/30 transition-all`}>
               <button 
                 onClick={() => {
                   onViewChange('Calendar');
                   onViewTypeChange('Dashboard');
                 }}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                className={`px-3 sm:px-3 py-2 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-xs font-bold ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
               >
-                <i className="fa-solid fa-chart-simple text-[10px]"></i>
+                <i className="fa-solid fa-chart-simple text-sm sm:text-[10px]"></i>
                 {!isShrunk && <span className="hidden sm:inline">Dashboard</span>}
               </button>
               <button 
@@ -125,26 +127,26 @@ const Layout: React.FC<LayoutProps> = ({
                   onViewChange('Calendar');
                   onViewTypeChange('Yearly');
                 }}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Calendar' && viewType === 'Yearly' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                className={`px-3 sm:px-3 py-2 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-xs font-bold ${currentView === 'Calendar' && viewType === 'Yearly' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
               >
-                <i className="fa-solid fa-calendar-days text-[10px]"></i>
+                <i className="fa-solid fa-calendar-days text-sm sm:text-[10px]"></i>
                 {!isShrunk && <span className="hidden sm:inline">Planner</span>}
               </button>
               {role !== 'Staff' && (
                 <button 
                   onClick={() => onViewChange('Reports')}
-                  className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Reports' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                  className={`px-3 sm:px-3 py-2 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-xs font-bold ${currentView === 'Reports' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
                 >
-                  <i className="fa-solid fa-file-invoice text-[10px]"></i>
+                  <i className="fa-solid fa-file-invoice text-sm sm:text-[10px]"></i>
                   {!isShrunk && <span className="hidden sm:inline">Reports</span>}
                 </button>
               )}
               {role !== 'Staff' && (
                 <button 
                   onClick={() => onViewChange('Settings')}
-                  className={`px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-[10px] sm:text-xs font-bold ${currentView === 'Settings' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
+                  className={`px-3 sm:px-3 py-2 sm:py-1.5 flex items-center gap-2 rounded-lg transition-all text-xs font-bold ${currentView === 'Settings' ? 'bg-white text-primary-700 shadow-sm' : 'text-primary-100 hover:bg-primary-600'}`}
                 >
-                  <i className="fa-solid fa-gear text-[10px]"></i>
+                  <i className="fa-solid fa-gear text-sm sm:text-[10px]"></i>
                   {!isShrunk && <span className="hidden sm:inline">Settings</span>}
                 </button>
               )}
@@ -183,13 +185,63 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 print:p-0 overflow-x-hidden">
         {children}
       </main>
 
-      <footer className="bg-white border-t border-gray-200 py-6 text-center text-gray-400 text-xs print:hidden">
+      <footer className="bg-white border-t border-gray-200 py-6 text-center text-gray-400 text-xs print:hidden mb-20 sm:mb-0">
         <p>&copy; 2026 Glenn Anthony Systems. Microsoft 365 Optimized.</p>
       </footer>
+
+      {/* Mobile Bottom Navigation */}
+      <nav 
+        onClick={() => setIsNavDocked?.(false)}
+        className={`
+          sm:hidden fixed bottom-4 left-4 right-4 bg-white/30 backdrop-blur-xl border border-white/50 z-[90] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition-all duration-500 transform print:hidden overflow-hidden cursor-pointer
+          ${isNavDocked ? 'opacity-30 scale-90 translate-y-2' : 'opacity-100 scale-100 translate-y-0'}
+        `}
+      >
+        <div className={`flex justify-around items-center h-16 px-2 relative z-10 transition-all duration-500 ${isNavDocked ? 'pointer-events-none' : ''}`}>
+          <button 
+            onClick={() => {
+              onViewChange('Calendar');
+              onViewTypeChange('Dashboard');
+            }}
+            className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90 ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'text-primary-600' : 'text-gray-400'}`}
+          >
+            <i className={`fa-solid fa-chart-simple transition-all ${currentView === 'Calendar' && viewType === 'Dashboard' ? 'text-xl' : 'text-lg'}`}></i>
+            <span className="text-[9px] font-black uppercase tracking-widest">Dash</span>
+          </button>
+          <button 
+            onClick={() => {
+              onViewChange('Calendar');
+              onViewTypeChange('Yearly');
+            }}
+            className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90 ${currentView === 'Calendar' && viewType === 'Yearly' ? 'text-primary-600' : 'text-gray-400'}`}
+          >
+            <i className={`fa-solid fa-calendar-days transition-all ${currentView === 'Calendar' && viewType === 'Yearly' ? 'text-xl' : 'text-lg'}`}></i>
+            <span className="text-[9px] font-black uppercase tracking-widest">Planner</span>
+          </button>
+          {role !== 'Staff' && (
+            <button 
+              onClick={() => onViewChange('Reports')}
+              className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90 ${currentView === 'Reports' ? 'text-primary-600' : 'text-gray-400'}`}
+            >
+              <i className={`fa-solid fa-file-invoice transition-all ${currentView === 'Reports' ? 'text-xl' : 'text-lg'}`}></i>
+              <span className="text-[9px] font-black uppercase tracking-widest">Reports</span>
+            </button>
+          )}
+          {role !== 'Staff' && (
+            <button 
+              onClick={() => onViewChange('Settings')}
+              className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-90 ${currentView === 'Settings' ? 'text-primary-600' : 'text-gray-400'}`}
+            >
+              <i className={`fa-solid fa-gear transition-all ${currentView === 'Settings' ? 'text-xl' : 'text-lg'}`}></i>
+              <span className="text-[9px] font-black uppercase tracking-widest">Settings</span>
+            </button>
+          )}
+        </div>
+      </nav>
     </div>
   );
 };

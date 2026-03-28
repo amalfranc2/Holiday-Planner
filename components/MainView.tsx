@@ -278,16 +278,16 @@ const MainView: React.FC<MainViewProps> = ({
 
       {/* Persistent Quick Action Menu */}
       {viewType !== 'Dashboard' && currentUser.showBubble !== false && (
-        <div className="fixed bottom-6 right-6 z-[100]">
+        <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-6 z-[100] transition-all duration-500 transform">
           {(currentUser.bubbleStyle || 'arc') === 'classic' ? (
             <div className="flex flex-col items-end gap-2">
               {/* Classic View Capsules (Visible when expanded) */}
               <div className={`flex flex-col items-end gap-2 transition-all duration-300 ${isCapsuleExpanded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                 {/* Row 1: Year Navigation Capsule */}
-                <div className="flex items-center bg-white rounded-full shadow-lg border border-gray-100 p-1 gap-1 h-10">
+                <div className="flex items-center bg-white/30 backdrop-blur-xl rounded-full shadow-lg border border-white/50 p-1 gap-1 h-11">
                   <button 
                     onClick={() => navigateYear(-1)} 
-                    className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors"
+                    className="w-9 h-9 rounded-full hover:bg-white/40 flex items-center justify-center text-gray-500 transition-colors"
                     title="Previous Year"
                   >
                     <i className="fa-solid fa-chevron-left text-[10px]"></i>
@@ -295,7 +295,7 @@ const MainView: React.FC<MainViewProps> = ({
                   <span className="px-2 text-xs font-black text-primary-600 min-w-[40px] text-center">{selectedYear}</span>
                   <button 
                     onClick={() => navigateYear(1)} 
-                    className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors"
+                    className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors"
                     title="Next Year"
                   >
                     <i className="fa-solid fa-chevron-right text-[10px]"></i>
@@ -306,21 +306,21 @@ const MainView: React.FC<MainViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => toggleCategory('Kitchen')} 
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Kitchen') ? 'bg-orange-500 text-white' : 'bg-white text-orange-600 hover:bg-orange-50'}`}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-white/50 backdrop-blur-xl ${selectedCategories.includes('Kitchen') ? 'bg-orange-500/80 text-white' : 'bg-white/30 text-orange-600 hover:bg-white/40'}`}
                     title="Kitchen"
                   >
                     K
                   </button>
                   <button 
                     onClick={() => toggleCategory('Counter')} 
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Counter') ? 'bg-blue-500 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-white/50 backdrop-blur-xl ${selectedCategories.includes('Counter') ? 'bg-blue-500/80 text-white' : 'bg-white/30 text-blue-600 hover:bg-white/40'}`}
                     title="Counter"
                   >
                     C
                   </button>
                   <button 
                     onClick={() => toggleCategory('Manager')} 
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-gray-100 ${selectedCategories.includes('Manager') ? 'bg-purple-500 text-white' : 'bg-white text-purple-600 hover:bg-purple-50'}`}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center text-xs font-black transition-all shadow-lg border border-white/50 backdrop-blur-xl ${selectedCategories.includes('Manager') ? 'bg-purple-500/80 text-white' : 'bg-white/30 text-purple-600 hover:bg-white/40'}`}
                     title="Manager"
                   >
                     M
@@ -331,20 +331,21 @@ const MainView: React.FC<MainViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => setViewMode(viewMode === 'Calendar' ? 'StaffGrid' : 'Calendar')}
-                    className="bg-primary-600 text-white h-10 px-4 rounded-full shadow-lg flex items-center gap-2 text-xs font-bold hover:bg-primary-700 transition-colors"
+                    className="bg-primary-600/80 backdrop-blur-xl text-white h-11 px-4 rounded-full shadow-lg flex items-center gap-2 text-xs font-bold hover:bg-primary-700 transition-colors border border-white/10"
                   >
                     <i className={`fa-solid ${viewMode === 'Calendar' ? 'fa-table-cells' : 'fa-calendar-days'}`}></i>
                     {viewMode === 'Calendar' ? 'Grid' : 'Planner'}
                   </button>
                   <button 
                     onClick={() => {
-                      const scrollTargets = [window, document.documentElement, document.body, document.querySelector('main'), document.querySelector('#root')];
-                      scrollTargets.forEach(target => {
-                        if (target && 'scrollTo' in target) (target as any).scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                        if (target && 'scrollTop' in target) (target as any).scrollTop = 0;
-                      });
+                      const root = document.getElementById('root');
+                      if (root) {
+                        root.scrollTo({ top: 0, behavior: 'smooth' });
+                        root.scrollTop = 0;
+                      }
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    className="bg-gray-800 text-white w-10 h-10 rounded-full shadow-lg flex items-center justify-center hover:bg-black transition-colors"
+                    className="bg-gray-800/80 backdrop-blur-xl text-white w-11 h-11 rounded-full shadow-lg flex items-center justify-center hover:bg-black transition-colors border border-white/10"
                     title="Back to Top"
                   >
                     <i className="fa-solid fa-arrow-up"></i>
@@ -356,8 +357,8 @@ const MainView: React.FC<MainViewProps> = ({
               <button 
                 onClick={() => setIsCapsuleExpanded(!isCapsuleExpanded)}
                 className={`
-                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 cursor-pointer z-[101]
-                  ${isCapsuleExpanded ? 'bg-gray-800 text-white rotate-45' : 'bg-primary-600 text-white rotate-0'}
+                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 cursor-pointer z-[101] backdrop-blur-xl border border-white/50
+                  ${isCapsuleExpanded ? 'bg-gray-800/80 text-white rotate-45' : 'bg-primary-600/80 text-white rotate-0'}
                 `}
               >
                 <i className={`fa-solid ${isCapsuleExpanded ? 'fa-xmark' : 'fa-hand-pointer'}`}></i>
@@ -379,56 +380,57 @@ const MainView: React.FC<MainViewProps> = ({
                     onClick: () => navigateYear(-1), 
                     title: 'Previous Year',
                     angle: 135,
-                    color: 'bg-white text-gray-600'
+                    color: 'bg-white/70 text-gray-600'
                   },
                   { 
                     icon: 'fa-chevron-right', 
                     onClick: () => navigateYear(1), 
                     title: 'Next Year',
                     angle: 157.5,
-                    color: 'bg-white text-gray-600'
+                    color: 'bg-white/70 text-gray-600'
                   },
                   { 
                     icon: viewMode === 'Calendar' ? 'fa-table-cells' : 'fa-calendar-days', 
                     onClick: () => setViewMode(viewMode === 'Calendar' ? 'StaffGrid' : 'Calendar'), 
                     title: viewMode === 'Calendar' ? 'Staff Grid' : 'Yearly Planner',
                     angle: 180,
-                    color: 'bg-primary-600 text-white'
+                    color: 'bg-primary-600/80 text-white'
                   },
                   { 
                     label: 'K', 
                     onClick: () => toggleCategory('Kitchen'), 
                     title: 'Kitchen',
                     angle: 202.5,
-                    color: selectedCategories.includes('Kitchen') ? 'bg-orange-500 text-white' : 'bg-white text-orange-600'
+                    color: selectedCategories.includes('Kitchen') ? 'bg-orange-500/80 text-white' : 'bg-white/70 text-orange-600'
                   },
                   { 
                     label: 'C', 
                     onClick: () => toggleCategory('Counter'), 
                     title: 'Counter',
                     angle: 225,
-                    color: selectedCategories.includes('Counter') ? 'bg-blue-500 text-white' : 'bg-white text-blue-600'
+                    color: selectedCategories.includes('Counter') ? 'bg-blue-500/80 text-white' : 'bg-white/70 text-blue-600'
                   },
                   { 
                     label: 'M', 
                     onClick: () => toggleCategory('Manager'), 
                     title: 'Manager',
                     angle: 247.5,
-                    color: selectedCategories.includes('Manager') ? 'bg-purple-500 text-white' : 'bg-white text-purple-600'
+                    color: selectedCategories.includes('Manager') ? 'bg-purple-500/80 text-white' : 'bg-white/70 text-purple-600'
                   },
                   { 
                     icon: 'fa-arrow-up', 
                     onClick: () => {
-                      const scrollTargets = [window, document.documentElement, document.body, document.querySelector('main'), document.querySelector('#root')];
-                      scrollTargets.forEach(target => {
-                        if (target && 'scrollTo' in target) (target as any).scrollTo({ top: 0, left: 0, behavior: 'auto' });
-                        if (target && 'scrollTop' in target) (target as any).scrollTop = 0;
-                      });
+                      const root = document.getElementById('root');
+                      if (root) {
+                        root.scrollTo({ top: 0, behavior: 'smooth' });
+                        root.scrollTop = 0;
+                      }
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                       setIsCapsuleExpanded(false);
                     }, 
                     title: 'Back to Top',
                     angle: 270,
-                    color: 'bg-gray-800 text-white'
+                    color: 'bg-gray-800/80 text-white'
                   }
                 ].map((btn, idx) => {
                   const radius = 90;
@@ -442,7 +444,7 @@ const MainView: React.FC<MainViewProps> = ({
                       onClick={btn.onClick}
                       title={btn.title}
                       className={`
-                        absolute w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-xs font-black transition-all duration-500 border border-gray-100
+                        absolute w-11 h-11 rounded-full shadow-lg flex items-center justify-center text-xs font-black transition-all duration-500 border border-white/50 backdrop-blur-xl
                         ${btn.color} hover:scale-110 active:scale-95 cursor-pointer
                       `}
                       style={{
@@ -463,8 +465,8 @@ const MainView: React.FC<MainViewProps> = ({
               <button 
                 onClick={() => setIsCapsuleExpanded(!isCapsuleExpanded)}
                 className={`
-                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 active:scale-90 cursor-pointer z-[101]
-                  ${isCapsuleExpanded ? 'bg-gray-800 text-white rotate-45' : 'bg-primary-600 text-white rotate-0'}
+                  w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all duration-300 active:scale-90 cursor-pointer z-[101] backdrop-blur-xl border border-white/50
+                  ${isCapsuleExpanded ? 'bg-gray-800/80 text-white rotate-45' : 'bg-primary-600/80 text-white rotate-0'}
                 `}
               >
                 <i className={`fa-solid ${isCapsuleExpanded ? 'fa-xmark' : 'fa-hand-pointer'}`}></i>

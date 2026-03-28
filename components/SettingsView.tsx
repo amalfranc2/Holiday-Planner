@@ -56,7 +56,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingBranch, setEditingBranch] = useState<Partial<Branch> | null>(null);
   const [editingStaff, setEditingStaff] = useState<Partial<Staff> | null>(null);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
-  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config' | 'Logs'>(role === 'S-ADMIN' || role === 'ADMIN' ? 'Branches' : 'Staff');
+  const [activeTab, setActiveTab] = useState<'Branches' | 'Staff' | 'Users' | 'Profile' | 'System' | 'Config' | 'Logs'>('Profile');
   
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -414,9 +414,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     });
   };
 
-  const filteredStaff = isAdmin 
-    ? staff 
-    : staff.filter(s => s.branchId === currentBranchId);
+  const filteredStaff = staff.filter(s => 
+    currentBranchId === 'all' || s.branchId === currentBranchId
+  );
 
   const currentBranchName = branches.find(b => b.id === currentBranchId)?.name || 'Unknown Branch';
 
@@ -471,60 +471,60 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center mb-6">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <h2 className="text-2xl font-bold text-gray-800">System Settings</h2>
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            {isAdmin && (
-              <>
-                <button 
-                  onClick={() => setActiveTab('Branches')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Branches' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                >
-                  Branches
-                </button>
-                <button 
-                  onClick={() => setActiveTab('Users')}
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Users' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                >
-                  Users
-                </button>
-                {isSAdmin && (
-                  <>
-                    <button 
-                      onClick={() => setActiveTab('System')}
-                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                    >
-                      System
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('Config')}
-                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                    >
-                      Config
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('Logs')}
-                      className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Logs' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-                    >
-                      Logs
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-            <button 
-              onClick={() => setActiveTab('Staff')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Staff' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
-            >
-              Staff
-            </button>
+          <div className="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto overflow-x-auto no-scrollbar whitespace-nowrap">
             <button 
               onClick={() => setActiveTab('Profile')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'Profile' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+              className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Profile' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
             >
               Profile
             </button>
+            {isAdmin && (
+              <button 
+                onClick={() => setActiveTab('Users')}
+                className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Users' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+              >
+                Users
+              </button>
+            )}
+            <button 
+              onClick={() => setActiveTab('Staff')}
+              className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Staff' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+            >
+              Staff
+            </button>
+            {isAdmin && (
+              <button 
+                onClick={() => setActiveTab('Branches')}
+                className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Branches' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+              >
+                Branches
+              </button>
+            )}
+            {isSAdmin && (
+              <>
+                <button 
+                  onClick={() => setActiveTab('System')}
+                  className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'System' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                >
+                  System
+                </button>
+                <button 
+                  onClick={() => setActiveTab('Config')}
+                  className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Config' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                >
+                  Config
+                </button>
+                <button 
+                  onClick={() => setActiveTab('Logs')}
+                  className={`px-5 py-3 rounded-md text-sm font-bold transition-all ${activeTab === 'Logs' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500'}`}
+                >
+                  Logs
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1107,7 +1107,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <h3 className="text-lg font-semibold text-gray-700">All Branches</h3>
               <button 
                 onClick={() => setEditingBranch({ name: '', location: '' })}
-                className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
+                className="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
               >
                 <i className="fa-solid fa-plus mr-2"></i> Add Branch
               </button>
@@ -1677,7 +1677,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </h3>
               <button 
                 onClick={() => setEditingStaff({ name: '', branchId: currentBranchId, category: 'Kitchen' })}
-                className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
+                className="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-all"
               >
                 <i className="fa-solid fa-plus mr-2"></i> Add Staff
               </button>
@@ -1788,8 +1788,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
             <div className="p-6 bg-gray-50 flex gap-3">
-              <button onClick={() => setEditingBranch(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveBranch} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Branch</button>
+              <button onClick={() => setEditingBranch(null)} className="flex-1 px-5 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
+              <button onClick={handleSaveBranch} className="flex-1 px-5 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Branch</button>
             </div>
           </div>
         </div>
@@ -1886,8 +1886,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
             <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
-              <button onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveUser} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save User</button>
+              <button onClick={() => setEditingUser(null)} className="flex-1 px-5 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
+              <button onClick={handleSaveUser} className="flex-1 px-5 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save User</button>
             </div>
           </div>
         </div>
@@ -1960,8 +1960,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
             <div className="p-6 bg-gray-50 flex gap-3 shrink-0">
-              <button onClick={() => setEditingStaff(null)} className="flex-1 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
-              <button onClick={handleSaveStaff} className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Staff</button>
+              <button onClick={() => setEditingStaff(null)} className="flex-1 px-5 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-all">Cancel</button>
+              <button onClick={handleSaveStaff} className="flex-1 px-5 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all">Save Staff</button>
             </div>
           </div>
         </div>

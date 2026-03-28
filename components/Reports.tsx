@@ -230,21 +230,29 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Controls - Hidden during print */}
-      <div className="mb-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="flex-1 space-y-4">
+      <div className="mb-8 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 print:hidden overflow-hidden">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
               <i className="fa-solid fa-file-invoice text-primary-600"></i>
               Holiday Reports
             </h2>
-            
-            <div className="flex flex-wrap gap-6">
-              <div className="flex flex-col">
-                <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Report Mode</label>
-                <div className="flex bg-gray-100 p-1 rounded-xl">
+            <button
+              onClick={handleDownload}
+              className="w-full sm:w-auto px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all flex items-center justify-center gap-2 shadow-md"
+            >
+              <i className="fa-solid fa-download"></i>
+              Download Report
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-6 w-full overflow-hidden">
+            <div className="flex flex-col min-w-0">
+              <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Report Mode</label>
+              <div className="flex bg-gray-100 p-1 rounded-xl overflow-x-auto no-scrollbar whitespace-nowrap">
                   <button
                     onClick={() => setReportType('branch')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-5 py-3 rounded-lg text-sm font-bold transition-all ${
                       reportType === 'branch' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -252,7 +260,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                   </button>
                   <button
                     onClick={() => setReportType('staff')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-5 py-3 rounded-lg text-sm font-bold transition-all ${
                       reportType === 'staff' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -267,7 +275,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                   value={isManager && reportType === 'staff' ? (managerBranchId || 'all') : selectedBranchId}
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   disabled={isManager && reportType === 'staff'}
-                  className={`px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white ${
+                  className={`px-4 py-3 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-primary-500 outline-none bg-white ${
                     isManager && reportType === 'staff' ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
@@ -278,14 +286,14 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                 </select>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col min-w-0">
                 <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Categories</label>
-                <div className="flex bg-gray-100 p-1 rounded-xl">
+                <div className="flex bg-gray-100 p-1 rounded-xl overflow-x-auto no-scrollbar whitespace-nowrap">
                   {CATEGORIES.map(cat => (
                     <button
                       key={cat}
                       onClick={() => toggleCategory(cat)}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                      className={`px-4 py-2.5 rounded-lg text-xs font-bold uppercase transition-all ${
                         selectedCategories.includes(cat) 
                           ? 'bg-white shadow-sm text-primary-600' 
                           : 'text-gray-400 hover:text-gray-600'
@@ -305,7 +313,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                      className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </div>
                   <div className="flex flex-col">
@@ -314,19 +322,19 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                      className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col">
+                <div className="flex flex-col min-w-0">
                   <label className="text-[10px] uppercase font-bold text-gray-400 mb-1">Year Filter</label>
-                  <div className="flex bg-gray-100 p-1 rounded-xl">
+                  <div className="flex bg-gray-100 p-1 rounded-xl overflow-x-auto no-scrollbar whitespace-nowrap">
                     {[2024, 2025, 2026, 2027].map(year => (
                       <button
                         key={year}
                         onClick={() => setSelectedYear(year)}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all ${
                           selectedYear === year ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
                         }`}
                       >
@@ -338,16 +346,7 @@ const Reports: React.FC<ReportsProps> = ({ branches, staff, requests, currentUse
               )}
             </div>
           </div>
-
-          <button
-            onClick={handleDownload}
-            className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition-all flex items-center gap-2 shadow-md"
-          >
-            <i className="fa-solid fa-download"></i>
-            Download Report
-          </button>
         </div>
-      </div>
 
       {/* Report Content */}
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 print:shadow-none print:border-none print:p-0">
